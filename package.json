@@ -1,0 +1,22 @@
+{
+  "name": "atomic-swaps",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "ts-mocha test/*.spec.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/jest": "^25.1.4",
+    "@types/mocha": "^7.0.2",
+    "bip32": "^2.0.5",
+    "bip32-utils": "git://github.com/bitcoinjs/bip32-utils.git",
+    "bip39": "^3.0.2",
+    "bitcoinjs-lib": "^5.1.7",
+    "mocha": "^7.1.0",
+    "ts-mocha": "^6.0.0",
+    "typescript": "^3.8.3"
+  }
+}
