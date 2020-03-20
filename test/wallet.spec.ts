@@ -4,7 +4,7 @@ import {
     mnemonicToSeed,
     walletFromSeed,
     walletFromBase58
- } from '../wallet';
+ } from '../src/wallet';
 import assert = require('assert');
 import * as bitcoinjs from 'bitcoinjs-lib'
 
