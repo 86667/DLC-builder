@@ -1,5 +1,5 @@
-import { TransactionBuilder, Psbt, ECPair } from 'bitcoinjs-lib'
-import { multisig2of2, p2shGetPrevOutScript } from '../util'
+import { Transaction, TransactionBuilder, Psbt, ECPair } from 'bitcoinjs-lib'
+import { multisig2of2, p2shGetPrevOutScript } from './util'
 
 interface witnessUtxo {
   script: Buffer,
@@ -17,11 +17,14 @@ interface output {
 
 interface Participant {
   fund_amount: number,
-  init_pub_keys: Buffer[],
+  case1_out_amount: number, // amount returned to this participant in case 1
+  case2_out_amount: number, //          "               "          in case 2
+  init_pub_keys: Buffer[], // pubkeys of funding inputs
   funding_pub_key: Buffer,
   sweep_pub_key: Buffer,
-  init_utxos: input[],
-  init_change_addr: string,
+  init_utxos: input[], // funding inputs
+  change_amount: number, // change from funding inputs amount
+  change_addr: string, // change address
   final_output_addr: string
 }
 
@@ -36,10 +39,13 @@ export class DLC_Proposal {
   public alice: Participant
   public bob: Participant
   public oracle: Oracle = { keys: [] }
+  public case1_pubKey: String // UNUSED FOR NOW - oracle pubkey for event 1
+  public case2_pubKey: String // UNUSED FOR NOW - oracle pubkey for event 2
   network: any
 
+  // proposal state
   public signable: boolean = false // ready for signatures
-  public complete: boolean = false // ready for construction
+  public complete: boolean = false // ready for tx broadcast
 
   // p2sh addresses and script
   public funding_p2sh
@@ -51,6 +57,7 @@ export class DLC_Proposal {
 
   // transcations
   public funding_txb: TransactionBuilder
+  funding_txid: string
   public cet1_txb: TransactionBuilder
   public cet2_txb: TransactionBuilder
 
@@ -71,17 +78,16 @@ export class DLC_Proposal {
     this.signable = true
     return true
   }
+
   validateParticipant(participant: Participant) {
     // verify input utxos can cover funds by asking blockchain
-    // verify init keys sign for all
+    // verify init keys sign for all inputs
     // verify all fields set
     return true
   }
 
-  // This method replaces creates/replaces an accept object for the relevant
-  // participant.
-  // inputs: ECPair keys for each signature
-  accept(init_keys: any[], funding_key: object) {
+  // build all transaction builders ready for sigs
+  buildTxbs() {
     if (!(this.signable)) { throw "proposal not ready for signatures. please run isSignable()"}
     // Object to add signatures to for transmission
 
@@ -96,11 +102,13 @@ export class DLC_Proposal {
     this.cet2_p2sh_prevScriptOut = p2shGetPrevOutScript(this.cet2_p2sh,this.network)
 
     // Generate transactions and signatures
-    this.funding_txb = this.genFundingTxb(init_keys)
-
+    this.funding_txb = this.buildFundingTxb()
+    this.cet1_txb = this.buildCET1Tx()
+    this.cet2_txb = this.buildCET2Tx()
+    console.log("Funding, CET 1, CET 2 transactions successfully built.")
   }
 
-  genFundingTxb(init_keys: any[]) {
+  buildFundingTxb() {
     let txb = new TransactionBuilder(this.network)
     this.alice.init_utxos.forEach(input => {
       txb.addInput(input.txid,input.vout)
@@ -108,31 +116,99 @@ export class DLC_Proposal {
     this.bob.init_utxos.forEach(input => {
       txb.addInput(input.txid,input.vout)
     })
-    //output
-    let amount = this.alice.fund_amount + this.bob.fund_amount
+    // outputs - funding p2sh
+    let amount = (this.alice.fund_amount + this.bob.fund_amount)
+      - (this.alice.change_amount + this.bob.change_amount)
     txb.addOutput(this.funding_p2sh.address, amount)
-    //sign
-    let signed = 0
-    for (let i=0;i<(this.alice.init_utxos.length+this.bob.init_utxos.length);i++) {
-      console.log(i)
-      try {
-        txb.sign(signed,init_keys[signed])
-        signed++
-      } catch(err) { // TODO ensure correct error is caught
-        console.log(err)
-      }
-    }
+    // change
+    txb.addOutput(this.alice.change_addr,this.alice.change_amount)
+    txb.addOutput(this.bob.change_addr,this.bob.change_amount)
 
+    this.funding_txid = txb.buildIncomplete().getId()
     return txb
   }
 
+  signfundingTxb(init_keys: any[]) {
+    let signed = 0
+    for (let i=0;i<(this.alice.init_utxos.length+this.bob.init_utxos.length);i++) {
+      try {
+        this.funding_txb.sign(i,init_keys[signed],null,Transaction.SIGHASH_NONE)
+        signed++
+      } catch(err) {
+        // ensure correct error is caught
+        if (!(err.toString().includes("Key pair cannot sign for this input")
+          || err.toString().includes("sign requires keypair"))) {
+            throw err
+          }
+      }
+    }
+    if (signed != init_keys.length) {
+      throw "Error: Some keys did not successfully sign."
+    }
+    console.log("Funding tx successfully signed.")
+  }
+
+  buildCET1Tx() {
+    let txb = new TransactionBuilder(this.network)
+    txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
+    txb.addOutput(this.cet1_p2sh.address,this.alice.case1_out_amount)
+    txb.addOutput(this.bob.final_output_addr,this.bob.case1_out_amount)
+    return txb
+  }
+
+  buildCET2Tx() {
+    let txb = new TransactionBuilder(this.network)
+    txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
+    txb.addOutput(this.cet2_p2sh.address,this.alice.case2_out_amount)
+    txb.addOutput(this.bob.final_output_addr,this.bob.case2_out_amount)
+    return txb
+  }
+
+  signCETtxs(funding_key: any) {
+    this.cet1_txb.sign(0,funding_key,this.funding_p2sh.redeem.output)
+    console.log("CET 1 tx successfully signed.")
+    this.cet2_txb.sign(0,funding_key,this.funding_p2sh.redeem.output)
+    console.log("CET 2 tx successfully signed.")
+  }
+
+  // construct DLC_Accept object
+  buildAcceptObject() {
+    // get signatures
+    let funding_tx_sigs = []
+    this.funding_txb.buildIncomplete().ins.forEach(input => {
+      funding_tx_sigs.push(input.script)
+    })
+    let cet1_tx_sig = this.cet1_txb.buildIncomplete().ins[0].script
+    let cet2_tx_sig = this.cet2_txb.buildIncomplete().ins[0].script
+    return new DLC_Accept(
+      12345,
+      this.funding_txid,
+      funding_tx_sigs,
+      cet1_tx_sig,
+      cet2_tx_sig
+    )
+  }
 }
 
+// object with signatures from all signed txs for sending to other participant
 export class DLC_Accept {
-  proposal: DLC_Proposal
-  constructor(proposal: DLC_Proposal, ) {
-    this.proposal = proposal
-    if (!(this.proposal.signable)) { throw "proposal not ready for signatures"}
-
+  public proposalId: number
+  public funding_txid: string // for validation of tx building
+  public funding_tx_sigs: Buffer[]
+  public cet1_tx_sig: Buffer
+  public cet2_tx_sig: Buffer
+  constructor(
+    proposalId: number,
+    funding_txid: string,
+    funding_tx_sigs: Buffer[],
+    cet1_tx_sig: Buffer,
+    cet2_tx_sig: Buffer,
+  ){
+    this.proposalId = proposalId
+    this.funding_txid = funding_txid
+    this.funding_tx_sigs = funding_tx_sigs
+    this.cet1_tx_sig = cet1_tx_sig
+    this.cet2_tx_sig = cet2_tx_sig
   }
+  serialize() {}
 }

@@ -3,13 +3,13 @@ import { DLC_Proposal } from './proposal'
 
 /**
   For DLC we require:
-    - Each Participant must provide:
+    - from each Participant:
         -atleast 3 keys:
           - init_pub_keys[]: public keys to spend utxos to fund contract
           - funding_pub_key: public key to unlock funds from funding tx
           - sweep_pub_key: public key to unlock funds from CETs
         - init_utxos[]: UTXOs to fund DLC contract
-        - init_change_addr: address for change output of funding tx inptus
+        - change_addr: address for change output of funding tx inptus
         - final_output_addr - also refund address
     - oracle information:
       - In the demo case simply public keys for each outcome
@@ -34,7 +34,7 @@ import { DLC_Proposal } from './proposal'
 
 // keys
 let alice_init = ECPair.fromWIF("cSYfeE9feJBfKd4WowaG5jhJR1iLBGXE13t15Q9EeyMtC5812PTT",network)
-let bob_init = ECPair.fromWIF("cU8hbHD32n887EJ7qXPLqrmvG9jJTUpRJ9vjs8qijzkJpa6EtJ2L",network)
+let bob_init = ECPair.fromWIF("cN8AWM536QQvzAa5DhnQHydJniyH7YjPzrsEkZAX42Autvg1A4TE",network)
 let alice_funding = ECPair.fromWIF("cVcVHfmx8SGxdkeKbfjkW9g7oFV6JvWXxWPoekmUd9egRN978iEG",network)
 let bob_funding = ECPair.fromWIF("cQZHCoVmsMtyskmTBHsUFg43GemZELUeMTNWSS674rNzWUK85f61",network)
 let alice_sweep = ECPair.fromWIF("cRPM3yaCmyXVKJuuT9mR6Gfji9Lh8LoUMnHcKfyEYFvaMmAqPRGJ",network)
@@ -47,21 +47,27 @@ let p2wphk_alice = payments.p2wpkh({pubkey: alice_init.publicKey, network})
 let p2wphk_bob = payments.p2wpkh({pubkey: bob_init.publicKey, network})
 
 let alice = {
-  fund_amount: 10,
+  fund_amount: 50000000,
+  case1_out_amount: 150000000,
+  case2_out_amount: 50000000,
   init_pub_keys: [alice_init.publicKey],
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
   init_utxos: [{ "txid":"a7fa4ec4848d46f6093d1b856a714a226246d77a881563438144c818ae57067a","vout":0 }],
-  init_change_addr: p2wphk_alice.address,
+  change_amount: 100,
+  change_addr: p2wphk_alice.address,
   final_output_addr: p2wphk_alice.address
 }
 let bob = {
-  fund_amount: 10,
+  fund_amount: 150000000,
+  case1_out_amount: 50000000,
+  case2_out_amount: 150000000,
   init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
-  init_utxos: [{ "txid":"a7fa4ec4848d46f6093d1b856a714a226246d77a881563438144c818ae57067a","vout":1 }],
-  init_change_addr: p2wphk_bob.address,
+  init_utxos: [{ "txid":"af0813dc03c99617700c1c96d8a3a462331536a5f550cc357b4397881503a1b6","vout":1 }],
+  change_amount: 100,
+  change_addr: p2wphk_bob.address,
   final_output_addr: p2wphk_bob.address
 }
 
@@ -71,7 +77,14 @@ prop.bob = bob
 prop.oracle.keys = [ p_moon, p_crash ]
 
 prop.isSignable()
-prop.accept([ alice_init ], alice_funding)
-console.log(prop.funding_txb.buildIncomplete())
-// this works. input scriptSig produced same as in dlc.ts example
-// write oCET tx builders next
+prop.buildTxbs()
+prop.signfundingTxb([ alice_init ])
+prop.signfundingTxb([ bob_init ])
+prop.signCETtxs(alice_funding)
+prop.signCETtxs(bob_funding)
+
+console.log('\nfunding_tx.toHex()  ', prop.funding_txb.build().toHex())
+console.log('\ncet1_tx.toHex()  ', prop.cet1_txb.build().toHex())
+console.log('\ncet2_tx.toHex()  ', prop.cet2_txb.build().toHex())
+
+// console.log(prop.buildAcceptObject())

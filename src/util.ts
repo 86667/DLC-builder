@@ -5,6 +5,9 @@ import { networks, payments } from 'bitcoinjs-lib'
 export function newKey() {
   return ECPair.makeRandom({network: networks.regtest}).toWIF()
 }
+export function addrForKey(key: any) {
+  return payments.p2pkh({ pubkey: key.publicKey, network: networks.regtest }).address;
+}
 // return p2sh address
 export function multisig3of2(key1: Buffer, key2: Buffer, key3: Buffer, network: any) {
   const p2ms = payments.p2ms({
