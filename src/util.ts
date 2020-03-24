@@ -17,9 +17,11 @@ export function multisig3of2(key1: Buffer, key2: Buffer, key3: Buffer, network: 
     return payments.p2sh({redeem: p2ms, network})
 }
 export function multisig2of2(key1: Buffer, key2: Buffer, network: any) {
+  let keys = [key1,key2]
+    .sort((a, b) => (parseInt(a.toString('hex').substring(0,5),16) >= parseInt(b.toString('hex').substring(0,5),16))? 1 : -1)
   const p2ms = payments.p2ms({
     m: 2, pubkeys: [
-    key1,key2
+    keys[0],keys[1]
     ], network})
     return payments.p2wsh({redeem: p2ms, network})
 }

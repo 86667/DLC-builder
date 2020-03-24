@@ -43,9 +43,10 @@ let bob_sweep = ECPair.fromWIF("cVFMT5nYv73PxGHcFgh28UkGZc1vYa388wuBW2KqA8357ebC
 let p_moon = ECPair.fromWIF("cUE2YUeBYDW95DoE48LKAo5LhRn7FHkJTZiJDmQEWESmrdKUaxk8", network)
 let p_crash = ECPair.fromWIF("cSn8LLvwZJDaTHW2wGg7p8yzxcPk5Wund9qK6hyq7aQxQno3w7xq", network)
 
-
-let alice_change_p2wphk = payments.p2wpkh({pubkey: alice_init.publicKey, network})
-let bob_change_p2wphk = payments.p2wpkh({pubkey: bob_init.publicKey, network})
+let alice_change_p2wpkh = payments.p2wpkh({pubkey: alice_init.publicKey, network})
+let bob_change_p2wpkh = payments.p2wpkh({pubkey: bob_init.publicKey, network})
+console.log("alice address: "+alice_change_p2wpkh.address)
+console.log("bob address: "+bob_change_p2wpkh.address)
 
 let alice = {
   fund_amount: 50000000,
@@ -55,9 +56,9 @@ let alice = {
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
   init_utxos: [{ "txid":"6155785f531d1b2080aa794891cea8ddb612baed0bf173458be3a18469bcd0fc","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":100000000 }],
-  change_amount: 100,
-  change_addr: alice_change_p2wphk.address,
-  final_output_addr: alice_change_p2wphk.address
+  change_amount: 1000,
+  change_addr: alice_change_p2wpkh.address,
+  final_output_addr: alice_change_p2wpkh.address
 }
 let bob = {
   fund_amount: 150000000,
@@ -66,28 +67,36 @@ let bob = {
   init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
-  init_utxos: [{ "txid":"d87a2dc078558f73110f0b42227620473f58bc3fd093a9b45cc111a4077030b6","vout":0,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":100000000 }],
+  init_utxos: [{ "txid":"fb2e10a4da2389fd1c4746f00a6670d9dc494c46c1a5e1325b6a19c705105f7b","vout":1,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":100000000 }],
   change_amount: 100,
-  change_addr: bob_change_p2wphk.address,
-  final_output_addr: bob_change_p2wphk.address
+  change_addr: bob_change_p2wpkh.address,
+  final_output_addr: bob_change_p2wpkh.address
 }
 
-let prop = new DLC_Proposal(network)
-prop.alice = alice
-prop.bob = bob
-prop.oracle.keys = [ p_moon, p_crash ]
+let alice_prop = new DLC_Proposal(network)
+alice_prop.me = alice
+alice_prop.other = bob
+alice_prop.oracle.keys = [ p_moon, p_crash ]
+alice_prop.isSignable()
+alice_prop.buildTxbs()
 
-prop.isSignable()
-prop.buildTxbs()
-prop.signfundingTxb([ alice_init ])
-prop.signfundingTxb([ bob_init ])
-prop.signCETtxs(alice_funding)
-prop.signCETtxs(bob_funding)
+alice_prop.signfundingTxb([ alice_init ])
+alice_prop.signCETtxs(alice_funding)
 
-console.log('\nfunding_tx.toHex()  ', prop.funding_txb.build().toHex())
-console.log('\ncet1_tx.toHex()  ', prop.cet1_txb.build().toHex())
-console.log('\ncet2_tx.toHex()  ', prop.cet2_txb.build().toHex())
+let signatures1 = alice_prop.buildAcceptObject()
+console.log(signatures1)
 
-let signatures = prop.buildAcceptObject()
-console.log(signatures)
-// prop.includeAcceptObject(signatures)
+
+let bob_prop = new DLC_Proposal(network)
+bob_prop.me = bob
+bob_prop.other = alice
+bob_prop.oracle.keys = [ p_moon, p_crash ]
+bob_prop.isSignable()
+bob_prop.buildTxbs()
+
+bob_prop.signfundingTxb([ bob_init ])
+bob_prop.signCETtxs(bob_funding)
+
+// console.log(bob_prop.funding_txb.buildIncomplete())
+bob_prop.includeAcceptObject(signatures1)
+console.log(bob_prop.funding_tx)
