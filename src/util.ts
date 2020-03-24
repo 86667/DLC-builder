@@ -21,12 +21,11 @@ export function multisig2of2(key1: Buffer, key2: Buffer, network: any) {
     m: 2, pubkeys: [
     key1,key2
     ], network})
-    return payments.p2sh({redeem: p2ms, network})
+    return payments.p2wsh({redeem: p2ms, network})
 }
 // find prevOutScript for p2sh - this is the scriptPubKey for p2sh output
 export function p2shGetPrevOutScript(p2sh: any, network: any) {
   const fund_txb = new TransactionBuilder(network)
   fund_txb.addOutput(p2sh.address, 999e5)
-  let prevOutScript = fund_txb.buildIncomplete().outs[0].script.toString('hex')
   return fund_txb.buildIncomplete().outs[0].script.toString('hex')
 }

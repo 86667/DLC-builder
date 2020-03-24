@@ -1,14 +1,10 @@
-import { Transaction, TransactionBuilder, Psbt, ECPair } from 'bitcoinjs-lib'
+import { TransactionBuilder } from 'bitcoinjs-lib'
 import { multisig2of2, p2shGetPrevOutScript } from './util'
 
-interface witnessUtxo {
-  script: Buffer,
-  value: number
-}
 interface input {
   txid: string,
   vout: number,
-  witnessUtxo?: witnessUtxo
+  prevTxScript?: string
 }
 interface output {
   address: string,
@@ -111,10 +107,10 @@ export class DLC_Proposal {
   buildFundingTxb() {
     let txb = new TransactionBuilder(this.network)
     this.alice.init_utxos.forEach(input => {
-      txb.addInput(input.txid,input.vout)
+      txb.addInput(input.txid,input.vout,null,Buffer.from(input.prevTxScript,'hex'))
     })
     this.bob.init_utxos.forEach(input => {
-      txb.addInput(input.txid,input.vout)
+      txb.addInput(input.txid,input.vout,null,Buffer.from(input.prevTxScript,'hex'))
     })
     // outputs - funding p2sh
     let amount = (this.alice.fund_amount + this.bob.fund_amount)
@@ -132,12 +128,22 @@ export class DLC_Proposal {
     let signed = 0
     for (let i=0;i<(this.alice.init_utxos.length+this.bob.init_utxos.length);i++) {
       try {
-        this.funding_txb.sign(i,init_keys[signed],null,Transaction.SIGHASH_NONE)
+        let txb_sign_arg = { // must sign with TxbSignArg interface
+          prevOutScriptType: 'p2wpkh',
+          vin: i,
+          keyPair: {
+            publicKey: init_keys[signed].publicKey,
+            __D: init_keys[signed].privateKey,
+            sign: init_keys[signed].sign
+          },
+          witnessValue: 100000000
+        }
+        this.funding_txb.sign(txb_sign_arg,init_keys[signed])
         signed++
       } catch(err) {
         // ensure correct error is caught
         if (!(err.toString().includes("Key pair cannot sign for this input")
-          || err.toString().includes("sign requires keypair"))) {
+          || err.toString().includes("Cannot read property 'publicKey' of undefined"))) {
             throw err
           }
       }
@@ -188,6 +194,17 @@ export class DLC_Proposal {
       cet2_tx_sig
     )
   }
+
+  // include DLC_Accept object to own transaction builders
+  // includeAcceptObject(signatures: DLC_Accept) {
+  //   if (signatures.funding_txid != this.funding_txid) {
+  //     throw "ERROR: Funding txid does not match."
+  //   }
+  //   console.log(this.funding_txb)
+  //   let funding_tx = this.funding_txb.buildIncomplete()
+  //   let input = this.fun
+  //   // (hash, index, sequence, scriptSig)
+  // }
 }
 
 // object with signatures from all signed txs for sending to other participant

@@ -1,6 +1,6 @@
 import { ECPair, TransactionBuilder, Transaction } from 'bitcoinjs-lib'
 import { networks, payments, script } from 'bitcoinjs-lib'
-import * as util from './src/util'
+import * as util from '../src/util'
 
 const network = networks.regtest
 

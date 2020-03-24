@@ -1,4 +1,4 @@
-import { Psbt, ECPair, payments, networks } from 'bitcoinjs-lib'
+import { ECPair, payments, networks } from 'bitcoinjs-lib'
 import { DLC_Proposal } from './proposal'
 
 /**
@@ -43,8 +43,9 @@ let bob_sweep = ECPair.fromWIF("cVFMT5nYv73PxGHcFgh28UkGZc1vYa388wuBW2KqA8357ebC
 let p_moon = ECPair.fromWIF("cUE2YUeBYDW95DoE48LKAo5LhRn7FHkJTZiJDmQEWESmrdKUaxk8", network)
 let p_crash = ECPair.fromWIF("cSn8LLvwZJDaTHW2wGg7p8yzxcPk5Wund9qK6hyq7aQxQno3w7xq", network)
 
-let p2wphk_alice = payments.p2wpkh({pubkey: alice_init.publicKey, network})
-let p2wphk_bob = payments.p2wpkh({pubkey: bob_init.publicKey, network})
+
+let alice_change_p2wphk = payments.p2wpkh({pubkey: alice_init.publicKey, network})
+let bob_change_p2wphk = payments.p2wpkh({pubkey: bob_init.publicKey, network})
 
 let alice = {
   fund_amount: 50000000,
@@ -53,10 +54,10 @@ let alice = {
   init_pub_keys: [alice_init.publicKey],
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
-  init_utxos: [{ "txid":"a7fa4ec4848d46f6093d1b856a714a226246d77a881563438144c818ae57067a","vout":0 }],
+  init_utxos: [{ "txid":"6155785f531d1b2080aa794891cea8ddb612baed0bf173458be3a18469bcd0fc","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":100000000 }],
   change_amount: 100,
-  change_addr: p2wphk_alice.address,
-  final_output_addr: p2wphk_alice.address
+  change_addr: alice_change_p2wphk.address,
+  final_output_addr: alice_change_p2wphk.address
 }
 let bob = {
   fund_amount: 150000000,
@@ -65,10 +66,10 @@ let bob = {
   init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
-  init_utxos: [{ "txid":"af0813dc03c99617700c1c96d8a3a462331536a5f550cc357b4397881503a1b6","vout":1 }],
+  init_utxos: [{ "txid":"d87a2dc078558f73110f0b42227620473f58bc3fd093a9b45cc111a4077030b6","vout":0,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":100000000 }],
   change_amount: 100,
-  change_addr: p2wphk_bob.address,
-  final_output_addr: p2wphk_bob.address
+  change_addr: bob_change_p2wphk.address,
+  final_output_addr: bob_change_p2wphk.address
 }
 
 let prop = new DLC_Proposal(network)
@@ -87,4 +88,6 @@ console.log('\nfunding_tx.toHex()  ', prop.funding_txb.build().toHex())
 console.log('\ncet1_tx.toHex()  ', prop.cet1_txb.build().toHex())
 console.log('\ncet2_tx.toHex()  ', prop.cet2_txb.build().toHex())
 
-// console.log(prop.buildAcceptObject())
+let signatures = prop.buildAcceptObject()
+console.log(signatures)
+// prop.includeAcceptObject(signatures)
