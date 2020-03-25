@@ -16,6 +16,23 @@ export function multisig3of2(key1: Buffer, key2: Buffer, key3: Buffer, network: 
     ], network})
     return payments.p2sh({redeem: p2ms, network})
 }
+// used in sort() to order txid and addresses
+export function sortAnyType(array: any[]) {
+  if (array[0].txid) { // inputs
+    array.sort(
+      (a, b) => (
+        parseInt(a.txid.substring(0,4),16) > parseInt(b.txid.substring(0,4),16)
+      ) ? 1 : -1)
+  } else if (array[0].addr) { // funding tx output
+    array.sort(
+      (a, b) => (
+        parseInt(a.addr.substring(4,9),36) > parseInt(b.addr.substring(4,9),36)
+      ) ? 1 : -1)
+  } else {
+    throw "sortAnyType() does not support ordering of given type."
+  }
+  return array
+}
 export function multisig2of2(key1: Buffer, key2: Buffer, network: any) {
   let keys = [key1,key2]
     .sort((a, b) => (parseInt(a.toString('hex').substring(0,5),16) >= parseInt(b.toString('hex').substring(0,5),16))? 1 : -1)

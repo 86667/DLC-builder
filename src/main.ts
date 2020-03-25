@@ -17,7 +17,7 @@ import { DLC_Proposal } from './proposal'
     - DLC parameters:
       - funding amount for each participant
       - (not implemented) CSV delay
-      - CET locktime (how long before allowing refund)
+      - Refund Locktime (block or unix time after which refund tx is valid)
  */
 
 /**
@@ -49,28 +49,30 @@ console.log("alice address: "+alice_change_p2wpkh.address)
 console.log("bob address: "+bob_change_p2wpkh.address)
 
 let alice = {
-  fund_amount: 50000000,
+  fund_amount: 50000050,
   case1_out_amount: 150000000,
   case2_out_amount: 50000000,
   init_pub_keys: [alice_init.publicKey],
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
   init_utxos: [{ "txid":"6155785f531d1b2080aa794891cea8ddb612baed0bf173458be3a18469bcd0fc","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":100000000 }],
-  change_amount: 1000,
+  change_amount: 10000,
   change_addr: alice_change_p2wpkh.address,
-  final_output_addr: alice_change_p2wpkh.address
+  final_output_addr: alice_change_p2wpkh.address,
+  refund_locktime: 1000
 }
 let bob = {
-  fund_amount: 150000000,
+  fund_amount: 150000050,
   case1_out_amount: 50000000,
   case2_out_amount: 150000000,
   init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
   init_utxos: [{ "txid":"fb2e10a4da2389fd1c4746f00a6670d9dc494c46c1a5e1325b6a19c705105f7b","vout":1,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":100000000 }],
-  change_amount: 100,
+  change_amount: 10000,
   change_addr: bob_change_p2wpkh.address,
-  final_output_addr: bob_change_p2wpkh.address
+  final_output_addr: bob_change_p2wpkh.address,
+  refund_locktime: 1000
 }
 
 let alice_prop = new DLC_Proposal(network)
@@ -80,11 +82,12 @@ alice_prop.oracle.keys = [ p_moon, p_crash ]
 alice_prop.isSignable()
 alice_prop.buildTxbs()
 
-alice_prop.signfundingTxb([ alice_init ])
-alice_prop.signCETtxs(alice_funding)
+alice_prop.signFundingTxb([ alice_init ])
+alice_prop.signCETtxbs(alice_funding)
+alice_prop.signRefundTxb(alice_funding)
 
 let signatures1 = alice_prop.buildAcceptObject()
-console.log(signatures1)
+// console.log(signatures1)
 
 
 let bob_prop = new DLC_Proposal(network)
@@ -94,9 +97,13 @@ bob_prop.oracle.keys = [ p_moon, p_crash ]
 bob_prop.isSignable()
 bob_prop.buildTxbs()
 
-bob_prop.signfundingTxb([ bob_init ])
-bob_prop.signCETtxs(bob_funding)
+bob_prop.signFundingTxb([ bob_init ])
+bob_prop.signCETtxbs(bob_funding)
+bob_prop.signRefundTxb(bob_funding)
 
-// console.log(bob_prop.funding_txb.buildIncomplete())
 bob_prop.includeAcceptObject(signatures1)
-console.log(bob_prop.funding_tx)
+
+console.log("\nfunding_tx: "+bob_prop.funding_tx.toHex())
+console.log("\nmy_cet1_tx: "+bob_prop.my_cet1_tx.toHex())
+console.log("\nmy_cet2_tx: "+bob_prop.my_cet2_tx.toHex())
+console.log("\nrefund_tx: "+bob_prop.refund_tx.toHex())
