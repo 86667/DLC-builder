@@ -46,7 +46,7 @@ console.log(p2sh.address)
 // console.log(fund_txb.buildIncomplete().outs[0].script.toString('hex'))
 
 const tx = new Transaction();
-tx.locktime = lockTime;
+tx.locktime = 0;
 
 
 let hash="2ff3e66cff456e3d504259be3712016809c7c22818e5abc4eba08b6ef9f2760b"

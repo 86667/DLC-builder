@@ -2,7 +2,7 @@ import { TransactionBuilder, Transaction } from 'bitcoinjs-lib'
 import { multisig2of2, sortAnyType, p2shGetPrevOutScript } from './util'
 import * as assert from 'assert'
 
-const DEFAULT_FEE = 100
+const DEFAULT_FEE = 300
 
 interface input {
   txid: string,
@@ -60,7 +60,6 @@ export class DLC_Proposal {
   public funding_txb: TransactionBuilder
   public funding_tx: Transaction = null
   public funding_txid: string
-  public funding_amount: number
   public my_cet1_txb: TransactionBuilder
   public my_cet1_tx: Transaction = null
   public my_cet1_txid: string
@@ -98,7 +97,7 @@ export class DLC_Proposal {
     // verify init keys sign for all inputs
     // verify all fields
     assert.equal(this.other.fund_amount+this.me.fund_amount >=
-      this.me.case1_out_amount+this.me.case2_out_amount+DEFAULT_FEE, true)
+      this.me.case1_out_amount+this.me.case2_out_amount, true)
     assert.equal(this.me.case1_out_amount,this.other.case2_out_amount)
     assert.equal(this.me.case2_out_amount,this.other.case1_out_amount)
     assert.equal(this.me.funding_pub_key.length==33,true)
@@ -119,9 +118,6 @@ export class DLC_Proposal {
   // build all transaction builders ready for sigs
   buildTxbs() {
     if (!(this.signable)) { throw "proposal not ready for signatures. please run isSignable()"}
-    // calculate total funding amount
-    this.funding_amount = (this.me.fund_amount + this.other.fund_amount)
-      - (this.me.change_amount + this.other.change_amount)
 
     // construct funding p2h keys
     this.funding_p2sh = multisig2of2(this.me.funding_pub_key, this.other.funding_pub_key,this.network)
@@ -149,7 +145,7 @@ export class DLC_Proposal {
       txb.addInput(input.txid,input.vout,null,Buffer.from(input.prevTxScript,'hex'))
     })
     // outputs - funding p2sh
-    txb.addOutput(this.funding_p2sh.address, this.funding_amount - 200)
+    txb.addOutput(this.funding_p2sh.address, this.me.fund_amount + this.other.fund_amount)
     // change
     let change_outputs = []
     if (this.me.change_amount > 0) {
@@ -244,7 +240,7 @@ export class DLC_Proposal {
         sign: funding_key.sign
       },
       witnessScript: this.funding_p2sh.redeem.output,
-      witnessValue: this.funding_amount
+      witnessValue: this.me.fund_amount + this.other.fund_amount
     }
     this.my_cet1_txb.sign(txb_sign_arg,funding_key)
     console.log("my CET 1 tx successfully signed.")
@@ -280,7 +276,7 @@ export class DLC_Proposal {
         sign: funding_key.sign
       },
       witnessScript: this.funding_p2sh.redeem.output,
-      witnessValue: this.funding_amount
+      witnessValue: this.me.fund_amount + this.other.fund_amount
     }
     this.refund_txb.sign(txb_sign_arg,funding_key)
     console.log("Refund tx successfully signed.")
