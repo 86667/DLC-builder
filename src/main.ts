@@ -6,7 +6,9 @@ import { btcToSat, COIN, satToBtc } from './util'
 /**
   For DLC we require:
     - from each Participant:
-        -atleast 3 keys:
+        - cet_amounts: array of output amount for each case (in same
+          order as oracle keys for each case)
+        - atleast 3 keys:
           - init_pub_keys[]: public keys to spend utxos to fund contract
           - funding_pub_key: public key to unlock funds from funding tx
           - sweep_pub_key: public key to unlock funds from CETs
@@ -14,7 +16,7 @@ import { btcToSat, COIN, satToBtc } from './util'
         - change_addr: address for change output of funding tx inptus
         - final_output_addr - also refund address
     - oracle information:
-      - In the demo case simply public keys for each outcome
+      - In the demo case simply array of public keys for each outcome
     - network: {bitcoin, testnet, regtest}
     - DLC parameters:
       - funding amount for each participant
@@ -50,8 +52,7 @@ let bob_change_p2wpkh = payments.p2wpkh({pubkey: bob_init.publicKey, network})
 
 let alice = {
   fund_amount: 50000000,
-  case1_out_amount: 150000000,
-  case2_out_amount: 50000000,
+  cet_amounts: [ 150000000,50000000 ],
   init_pub_keys: [alice_init.publicKey],
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
@@ -63,8 +64,7 @@ let alice = {
 }
 let bob = {
   fund_amount: 150000000,
-  case1_out_amount: 50000000,
-  case2_out_amount: 150000000,
+  cet_amounts: [ 50000000, 150000000 ],
   init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
@@ -114,7 +114,7 @@ function run() {
   bob_prop.includeAcceptObject(signatures1)
 
   console.log("\nfunding_tx: "+bob_prop.funding_tx.toHex())
-  console.log("\nmy_cet1_tx: "+bob_prop.my_cet1_tx.toHex())
-  console.log("\nmy_cet2_tx: "+bob_prop.my_cet2_tx.toHex())
+  console.log("\nmy_cet1_tx: "+bob_prop.my_cets_tx[0].toHex())
+  console.log("\nmy_cet2_tx: "+bob_prop.my_cets_tx[1].toHex())
   console.log("\nrefund_tx: "+bob_prop.refund_tx.toHex())
   }
