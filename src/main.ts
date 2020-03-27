@@ -1,7 +1,7 @@
 import { ECPair, payments, networks } from 'bitcoinjs-lib'
 import { DLC_Proposal } from './proposal'
-import { btcToSat, COIN, satToBtc } from './util'
-
+import { btcToSat, COIN, satToBtc, msgToPrivKey } from './util'
+import * as ecc from 'tiny-secp256k1'
 
 /**
   For DLC we require:
@@ -53,6 +53,7 @@ let bob_change_p2wpkh = payments.p2wpkh({pubkey: bob_init.publicKey, network})
 let alice = {
   fund_amount: 50000000,
   cet_amounts: [ 150000000,50000000 ],
+  oracle_messages: [ "1", "2" ],
   init_pub_keys: [alice_init.publicKey],
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
@@ -65,6 +66,7 @@ let alice = {
 let bob = {
   fund_amount: 150000000,
   cet_amounts: [ 50000000, 150000000 ],
+  oracle_messages: [ "1", "2" ],
   init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
@@ -96,9 +98,8 @@ function run() {
   alice_prop.signCETtxbs(alice_funding)
   alice_prop.signRefundTxb(alice_funding)
 
-  let signatures1 = alice_prop.buildAcceptObject()
+  let signatures1 = alice_prop.buildAcceptObject().serialize()
   // console.log(signatures1)
-
 
   let bob_prop = new DLC_Proposal(network)
   bob_prop.me = bob
@@ -111,10 +112,10 @@ function run() {
   bob_prop.signCETtxbs(bob_funding)
   bob_prop.signRefundTxb(bob_funding)
 
-  bob_prop.includeAcceptObject(signatures1)
+  bob_prop.includeAcceptObjectSerialized(signatures1)
 
   console.log("\nfunding_tx: "+bob_prop.funding_tx.toHex())
   console.log("\nmy_cet1_tx: "+bob_prop.my_cets_tx[0].toHex())
   console.log("\nmy_cet2_tx: "+bob_prop.my_cets_tx[1].toHex())
   console.log("\nrefund_tx: "+bob_prop.refund_tx.toHex())
-  }
+}

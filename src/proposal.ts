@@ -1,5 +1,5 @@
-import { TransactionBuilder, Transaction } from 'bitcoinjs-lib'
-import { multisig2of2, sortAnyType, p2shGetPrevOutScript } from './util'
+import { TransactionBuilder, Transaction, payments  } from 'bitcoinjs-lib'
+import { getSpendingPubKey, multisig2of2, sortAnyType, p2shGetPrevOutScript } from './util'
 import * as assert from 'assert'
 
 const DEFAULT_FEE = 300
@@ -18,6 +18,7 @@ interface output {
 interface Participant {
   fund_amount: number,
   cet_amounts: number[], // amounts returned to this participant in each case
+  oracle_messages: string[], // messages to be signed by oracle
   init_pub_keys: Buffer[], // pubkeys of funding inputs
   funding_pub_key: Buffer,
   sweep_pub_key: Buffer,
@@ -49,8 +50,8 @@ export class DLC_Proposal {
   // p2sh addresses and scripts for signings
   public funding_p2sh
   public funding_p2sh_prevScriptOut
-  public my_cets_p2sh: any[] = []
-  public my_cets_p2sh_prevScriptOut: any[] = []
+  public my_cets_spend_key: any[] = []
+  public my_cets_spend_key_prevScriptOut: any[] = []
 
   // transactions
   public funding_txb: TransactionBuilder
@@ -81,13 +82,12 @@ export class DLC_Proposal {
     this.signable = true
     return true
   }
-
   validateParticipants() {
     // verify input utxos can cover funds by asking blockchain
     // verify init keys sign for all inputs
     // verify all fields
     let total_fund_amount = this.other.fund_amount+this.me.fund_amount
-    assert.equal(this.me.cet_amounts.length,this.other.cet_amounts.length)
+    assert.deepEqual(this.me.cet_amounts.length,this.other.cet_amounts.length)
     assert.equal(this.me.cet_amounts.length,this.oracle.keys.length)
     assert.equal(total_fund_amount == this.me.cet_amounts.reduce((a, b) => a + b, 0), true)
     assert.equal(total_fund_amount == this.other.cet_amounts.reduce((a, b) => a + b, 0), true)
@@ -95,6 +95,7 @@ export class DLC_Proposal {
       assert.equal(total_fund_amount,
         this.me.cet_amounts[i]+this.other.cet_amounts[i])
     }
+    assert.deepEqual(this.me.oracle_messages,this.other.oracle_messages)
     assert.equal(this.me.funding_pub_key.length==33,true)
     assert.equal(this.other.funding_pub_key.length==33,true)
     assert.equal(this.me.sweep_pub_key.length==33,true)
@@ -114,17 +115,7 @@ export class DLC_Proposal {
   buildTxbs() {
     if (!(this.signable)) { throw "proposal not ready for signatures. please run isSignable()"}
 
-    // construct funding p2h keys
-    this.funding_p2sh = multisig2of2(this.me.funding_pub_key, this.other.funding_pub_key,this.network)
-    this.funding_p2sh_prevScriptOut = p2shGetPrevOutScript(this.funding_p2sh, this.network)
-
-    // construct CET p2sh keys and store prevScriptOuts
-    for (let i=0;i<this.oracle.keys.length;i++) {
-      this.my_cets_p2sh.push(multisig2of2(this.me.sweep_pub_key, this.oracle.keys[i].publicKey, this.network))
-      this.my_cets_p2sh_prevScriptOut.push(p2shGetPrevOutScript(this.my_cets_p2sh[i],this.network))
-    }
-
-    // Generate transactions and signatures
+    // Generate transactions
     this.buildFundingTxb()
     this.buildOthersCETs()
     this.buildMyCETs()
@@ -133,6 +124,10 @@ export class DLC_Proposal {
   }
 
   buildFundingTxb() {
+    // construct p2h keys
+    this.funding_p2sh = multisig2of2(this.me.funding_pub_key, this.other.funding_pub_key,this.network)
+    this.funding_p2sh_prevScriptOut = p2shGetPrevOutScript(this.funding_p2sh, this.network)
+
     let txb = new TransactionBuilder(this.network)
     // ensure consistent ordering
     let inputs = sortAnyType(this.me.init_utxos.concat(this.other.init_utxos))
@@ -190,13 +185,17 @@ export class DLC_Proposal {
   }
 
   buildOthersCETs() {
+    let network = this.network
     for (let i=0;i<this.oracle.keys.length;i++) {
-      // construct CET p2sh keys
-      let cet_p2sh = multisig2of2(this.other.sweep_pub_key, this.oracle.keys[i].publicKey, this.network)
+      // construct CET spending keys and store prevScriptOuts
+      let cet_spend_key = payments.p2wpkh({
+        pubkey: getSpendingPubKey(this.me.oracle_messages[i],this.other.sweep_pub_key),
+        network
+      })
       // build txs
       let other_cet1_txb = new TransactionBuilder(this.network)
       other_cet1_txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
-      other_cet1_txb.addOutput(cet_p2sh.address,this.other.cet_amounts[i]-DEFAULT_FEE/2)
+      other_cet1_txb.addOutput(cet_spend_key.address,this.other.cet_amounts[i]-DEFAULT_FEE/2)
       other_cet1_txb.addOutput(this.me.final_output_addr,this.me.cet_amounts[i]-DEFAULT_FEE/2)
       this.other_cets_txid.push(other_cet1_txb.buildIncomplete().getId())
       this.other_cets_txb.push(other_cet1_txb)
@@ -204,11 +203,19 @@ export class DLC_Proposal {
   }
 
   buildMyCETs() {
+    let network = this.network
     // build txs
     for (let i=0;i<this.oracle.keys.length;i++) {
+      // construct CET spending keys and store prevScriptOuts
+      this.my_cets_spend_key.push( payments.p2wpkh({
+        pubkey: getSpendingPubKey(this.me.oracle_messages[i],this.me.sweep_pub_key),
+        network
+      }))
+      this.my_cets_spend_key_prevScriptOut.push(p2shGetPrevOutScript(this.my_cets_spend_key[i],this.network))
+
       let my_cet1_txb = new TransactionBuilder(this.network)
       my_cet1_txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
-      my_cet1_txb.addOutput(this.my_cets_p2sh[i].address,this.me.cet_amounts[i]-DEFAULT_FEE/2)
+      my_cet1_txb.addOutput(this.my_cets_spend_key[i].address,this.me.cet_amounts[i]-DEFAULT_FEE/2)
       my_cet1_txb.addOutput(this.other.final_output_addr,this.other.cet_amounts[i]-DEFAULT_FEE/2)
       this.my_cets_txid.push(my_cet1_txb.buildIncomplete().getId())
       this.my_cets_txb.push(my_cet1_txb)
@@ -279,7 +286,7 @@ export class DLC_Proposal {
     let refund_tx_sig = this.refund_txb.buildIncomplete().ins[0].witness.slice(1,3)
 
     console.log("Successfully build Accept object.")
-    return new DLC_Accept(
+    this.me_accept = new DLC_Accept(
       12345,
       funding_tx_sigs,
       this.funding_txid,
@@ -288,12 +295,15 @@ export class DLC_Proposal {
       refund_tx_sig,
       this.refund_txid
     )
+    return this.me_accept
   }
 
   // include DLC_Accept object to own transaction builders and build transactions
   includeAcceptObject(signatures: DLC_Accept) {
+    this.other_accept = signatures
     //funding tx
-    if (signatures.funding_txid != this.funding_txid) {
+    if (signatures.funding_txid &&
+      signatures.funding_txid != this.funding_txid) {
       throw "ERROR: Funding txid does not match."
     }
     let funding_tx = this.funding_txb.buildIncomplete()
@@ -311,7 +321,8 @@ export class DLC_Proposal {
 
     // cet txs
     for (let i=0;i<this.oracle.keys.length;i++) {
-      if (signatures.cets_txid[i] != this.my_cets_txid[i]) {
+      if (signatures.cets_txid[i] &&
+        signatures.cets_txid[i] != this.my_cets_txid[i]) {
         throw "ERROR: cet"+i+" txid does not match."
       }
       let my_cet_tx = this.my_cets_txb[i].buildIncomplete()
@@ -325,7 +336,8 @@ export class DLC_Proposal {
     }
 
     // refund tx
-    if (signatures.refund_txid != this.refund_txid) {
+    if (signatures.refund_txid &&
+      signatures.refund_txid != this.refund_txid) {
       throw "ERROR: refund txid does not match."
     }
     let refund_tx = this.refund_txb.buildIncomplete()
@@ -340,6 +352,13 @@ export class DLC_Proposal {
     console.log("Successfully included Accept object signatures into all transactions."
       + " Fully built transactions found in: this.funding_tx, this.my_cet1, this.my_cet2 and this.refund_tx.")
   }
+  includeAcceptObjectSerialized(serialised_signatures: any[]) {
+    if (!(this.other_accept)) {
+      var accept = new DLC_Accept()
+    }
+    accept.deserialize(serialised_signatures)
+    this.includeAcceptObject(accept)
+  }
 }
 
 // object with signatures from all signed txs for sending to other participant
@@ -352,13 +371,13 @@ export class DLC_Accept {
   public refund_tx_sig: Buffer[]
   public refund_txid: string
   constructor(
-    proposalId: number,
-    funding_tx_sigs: Buffer[][],
-    funding_txid: string,
-    cets_tx_sig: Buffer[][],
-    cets_txid: string[],
-    refund_tx_sig: Buffer[],
-    refund_txid: string
+    proposalId?: number,
+    funding_tx_sigs?: Buffer[][],
+    funding_txid?: string,
+    cets_tx_sig?: Buffer[][],
+    cets_txid?: string[],
+    refund_tx_sig?: Buffer[],
+    refund_txid?: string
   ){
     this.proposalId = proposalId
     this.funding_tx_sigs = funding_tx_sigs
@@ -368,5 +387,24 @@ export class DLC_Accept {
     this.refund_tx_sig = refund_tx_sig
     this.refund_txid = refund_txid
   }
-  serialize() {}
+  // TODO: do this properly
+  serialize() {
+    return [
+        this.proposalId,
+        this.funding_tx_sigs,
+        this.cets_tx_sig,
+        this.refund_tx_sig
+      ]
+  }
+  // TODO: do this properly
+  deserialize(data: any[]) {
+    this.proposalId = data[0]
+    this.funding_tx_sigs = data[1]
+    this.cets_tx_sig = data[2]
+    this.refund_tx_sig = data[3]
+    this.funding_txid = null
+    this.cets_txid = []
+    this.refund_txid = null
+
+  }
 }

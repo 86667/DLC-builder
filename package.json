@@ -11,6 +11,7 @@
   "dependencies": {
     "@types/jest": "^25.1.4",
     "@types/mocha": "^7.0.2",
+    "@types/tiny-secp256k1": "^1.0.0",
     "bip32": "^2.0.5",
     "bip32-utils": "git://github.com/bitcoinjs/bip32-utils.git",
     "bip39": "^3.0.2",

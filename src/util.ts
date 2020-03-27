@@ -1,5 +1,7 @@
 import { ECPair, TransactionBuilder } from 'bitcoinjs-lib'
 import { networks, payments } from 'bitcoinjs-lib'
+import * as ecc from 'tiny-secp256k1'
+
 export const COIN=100000000
 export function btcToSat(value: number) { return Math.ceil(parseFloat((value / (1/COIN)).toString().substring(0,10))) }
 export function satToBtc(value: number) { return parseFloat((value * (1/COIN)).toString().substring(0,10)) }
@@ -51,4 +53,26 @@ export function p2shGetPrevOutScript(p2sh: any, network: any) {
   const fund_txb = new TransactionBuilder(network)
   fund_txb.addOutput(p2sh.address, 999e5)
   return fund_txb.buildIncomplete().outs[0].script.toString('hex')
+}
+// used in testing. Turn message into 32 byte priv key
+export function msgToPrivKey(msg: string) {
+  if (isNaN(parseInt(msg))) { throw "msg must be int" }
+  if (msg.length > 64) { throw "msg too long"}
+  // pad with 0s
+  msg = msg.concat((new Array(65-msg.length)).join("0"))
+  return Buffer.from(msg,'hex')
+}
+// used in testing. Turn message into 32 byte public key
+export function msgToPubKey(msg: string) {
+  let key = ECPair.fromPrivateKey(msgToPrivKey(msg))
+  return key.publicKey
+}
+// add oracle pub key to sweep funds key
+export function getSpendingPubKey(oracleMsg: string, sweep_pub_key: Buffer) {
+  return ecc.pointAdd(sweep_pub_key,msgToPubKey(oracleMsg))
+}
+// tweak key to generate spending key from sweep_funds key for some outcome
+export function getSpendingPrivKey(oracleMsg: string, sweep_key: any) {
+  let oracle_msg_priv = msgToPrivKey(oracleMsg)
+  return ECPair.fromPrivateKey(ecc.privateAdd(sweep_key.privateKey,oracle_msg_priv))
 }
