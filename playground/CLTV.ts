@@ -1,85 +1,83 @@
 import { ECPair, TransactionBuilder, Transaction } from 'bitcoinjs-lib'
-import { address, networks, opcodes, payments, script } from 'bitcoinjs-lib'
+import { networks, opcodes, payments, script } from 'bitcoinjs-lib'
 const network = networks.regtest
 const bip65 = require('bip65');
 
 // outline of CLTV transactions in bitcoinjs
+const hashType = Transaction.SIGHASH_ALL
+let alice_sweep = ECPair.fromWIF("cRPM3yaCmyXVKJuuT9mR6Gfji9Lh8LoUMnHcKfyEYFvaMmAqPRGJ",network)
+let bob_sweep = ECPair.fromWIF("cVFMT5nYv73PxGHcFgh28UkGZc1vYa388wuBW2KqA8357ebC8qX3",network)
+const p2wpkhAlice1 = payments.p2wpkh({pubkey: alice_sweep.publicKey, network})
 
-function idToHash(txid: string) {
-  return Buffer.from(txid, 'hex').reverse();
+function cltvCheckSigOutput (aQ, bQ, lockTime) {
+  return script.compile([
+    opcodes.OP_IF,
+    script.number.encode(lockTime),
+    opcodes.OP_CHECKLOCKTIMEVERIFY,
+    opcodes.OP_DROP,
+
+    opcodes.OP_ELSE,
+    bQ.publicKey,
+    opcodes.OP_CHECKSIGVERIFY,
+    opcodes.OP_ENDIF,
+
+    aQ.publicKey,
+    opcodes.OP_CHECKSIG
+  ])
 }
-function toOutputScript(addr: any): Buffer {
-  return address.toOutputScript(addr, networks.regtest);
+function cltvCheckSigOutput2 (aQ, bQ, lockTime) {
+  return script.compile([
+    opcodes.OP_IF,
+    script.number.encode(lockTime),
+    opcodes.OP_CHECKLOCKTIMEVERIFY,
+    opcodes.OP_DROP,
+    bQ.publicKey,
+    opcodes.OP_CHECKSIG,
+
+    opcodes.OP_ELSE,
+    aQ.publicKey,
+    opcodes.OP_CHECKSIG,
+    opcodes.OP_ENDIF
+  ])
 }
 
-let alice = ECPair.fromWIF("cVcVHfmx8SGxdkeKbfjkW9g7oFV6JvWXxWPoekmUd9egRN978iEG",network)
-let bob = ECPair.fromWIF("cQZHCoVmsMtyskmTBHsUFg43GemZELUeMTNWSS674rNzWUK85f61",network);
-
-const lockTime = bip65.encode({ blocks: 100 })
-
-let redeemScript = script.fromASM(
-  `
-  OP_IF
-  ${script.number.encode(lockTime).toString('hex')}
-  OP_CHECKLOCKTIMEVERIFY
-  OP_DROP
-  OP_ELSE
-  ${alice.publicKey.toString('hex')}
-  OP_CHECKSIGVERIFY
-  OP_ENDIF
-  ${bob.publicKey.toString('hex')}
-  OP_CHECKSIG
-  `
-  .trim()
-  .replace(/\s+/g, ' '),
-);
-const p2sh = payments.p2sh({
-  redeem: { output: redeemScript, network: networks.regtest },
-  network: networks.regtest,
-});
-console.log(p2sh.address)
-
-// find prevOutScript for p2sh - this is the scriptPubKey for p2sh output
-// const fund_txb = new TransactionBuilder(network)
-// fund_txb.addOutput(p2sh.address, 999e5)
-// let prevOutScript = fund_txb.buildIncomplete().outs[0].script.toString('hex')
-// console.log(fund_txb.buildIncomplete().outs[0].script.toString('hex'))
-
-const tx = new Transaction();
-tx.locktime = 0;
+const locktime = bip65.encode({blocks: 100})
+// const locktime = 130
+const witnessScript = cltvCheckSigOutput2(alice_sweep, bob_sweep, locktime)
+const p2wsh = payments.p2wsh({redeem: {output: witnessScript, network}, network})
+console.log('P2WSH address:')
+console.log(p2wsh.address)
 
 
-let hash="2ff3e66cff456e3d504259be3712016809c7c22818e5abc4eba08b6ef9f2760b"
-// hash = hash.split("").reverse().join("")
-var reverse = require("buffer-reverse")
+const txb = new TransactionBuilder(network)
+txb.setLockTime(99)
+txb.addInput('1923342ea366e6e957a082a08f931a896e26f86f82698a7c6ea4059b8db393aa', 0, 0xfffffffe)
+txb.addOutput(p2wpkhAlice1.address, 999e5)
+const tx = txb.buildIncomplete()
 
-tx.addInput(reverse(Buffer.from(hash,'hex')),1,0xfffffffe)
-tx.addOutput(toOutputScript("bcrt1qv8ahv0hqda039645vuhuy0mf25j9jgrxuxnxzv"), 999e5)
 
-// {Alice's signature} OP_TRUE
-const signatureHash = tx.hashForSignature(0, redeemScript, Transaction.SIGHASH_ALL)
-const redeemScriptSig = payments.p2sh({
+// add witness
+const signatureHash = tx.hashForWitnessV0(0, witnessScript, 1e8, hashType)
+
+const witnessStackFirstBranch = payments.p2wsh({
   redeem: {
     input: script.compile([
-      script.signature.encode(alice.sign(signatureHash), Transaction.SIGHASH_ALL),
+      script.signature.encode(alice_sweep.sign(signatureHash), hashType),
+      opcodes.OP_FALSE
+    ]),
+    output: witnessScript
+  }
+}).witness
+
+const witnessStackSecondBranch = payments.p2wsh({
+  redeem: {
+    input: script.compile([
+      script.signature.encode(bob_sweep.sign(signatureHash), hashType),
       opcodes.OP_TRUE
     ]),
-    output: redeemScript
+    output: witnessScript
   }
-}).input
-tx.setInputScript(0, redeemScriptSig)
+}).witness
 
-console.log('tx.toHex()  ', tx.toHex())
-
-// txid: 2ff3e66cff456e3d504259be3712016809c7c22818e5abc4eba08b6ef9f2760b
-// hash: 9c6d2f6545f2051cb505ca57ce1b1681c2155acab3055488f7362402647169e3
-
-// hash as buffer
-// e3697164022436f7885405b3ca5a15c281161bce57ca05b51c05f245652f6d9c
-
-// function testSignInput(scriptPubKey: string, key) {
-//   let psbt = new Psbt()
-//   psbt.addInput({"hash": "add461158f90a33b28e6a8d8a1219064f413e2604a4179ec7d33c61b9b672a90","index": 0,
-//     "witnessUtxo": {"script": Buffer.from(scriptPubKey, 'hex'),
-//     "value": 200000000}})
-//   return(psbt.signInput(0,key))
+tx.setWitness(0, witnessStackSecondBranch)
+console.log(tx.toHex())

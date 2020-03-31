@@ -1,5 +1,14 @@
 import { TransactionBuilder, Transaction, payments  } from 'bitcoinjs-lib'
-import { getSpendingPubKey, multisig2of2, sortAnyType, p2shGetPrevOutScript } from './util'
+import {
+  cltvCETtxOutputWitnessScript,
+  getSpendingPrivKey,
+  getSpendingPubKey,
+  multisig2of2,
+  myCetTxOutput0Sign,
+  otherCetTxOutput0Sign,
+  sortAnyType,
+  p2shGetPrevOutScript
+ } from './util'
 import * as assert from 'assert'
 
 const DEFAULT_FEE = 300
@@ -8,10 +17,6 @@ interface input {
   txid: string,
   vout: number,
   prevTxScript: string,
-  value: number
-}
-interface output {
-  address: string,
   value: number
 }
 
@@ -26,6 +31,7 @@ interface Participant {
   change_amount: number, // change from funding inputs amount
   change_addr: string, // change address
   final_output_addr: string,
+  cltv_locktime: number,
   refund_locktime: number
 }
 
@@ -48,10 +54,11 @@ export class DLC_Proposal {
   public complete: boolean = false // ready for tx broadcast
 
   // p2sh addresses and scripts for signings
-  public funding_p2sh
-  public funding_p2sh_prevScriptOut
+  public funding_p2sh: any
+  public funding_p2sh_prevScriptOut: string
   public my_cets_spend_key: any[] = []
-  public my_cets_spend_key_prevScriptOut: any[] = []
+  public my_cets_p2wsh: any[] = []
+  public other_cet_spend_key: any[] = []
 
   // transactions
   public funding_txb: TransactionBuilder
@@ -61,7 +68,6 @@ export class DLC_Proposal {
   public my_cets_tx: Transaction[] = []
   public my_cets_txid: string[] = []
   public other_cets_txb: TransactionBuilder[] = []
-  public other_cets_tx: Transaction[] = []
   public other_cets_txid: string[] = []
   public refund_txb: TransactionBuilder
   public refund_tx: Transaction
@@ -187,18 +193,22 @@ export class DLC_Proposal {
   buildOthersCETs() {
     let network = this.network
     for (let i=0;i<this.oracle.keys.length;i++) {
-      // construct CET spending keys and store prevScriptOuts
-      let cet_spend_key = payments.p2wpkh({
+      // spend key for branch (A+P)
+      this.other_cet_spend_key.push(payments.p2wpkh({
         pubkey: getSpendingPubKey(this.me.oracle_messages[i],this.other.sweep_pub_key),
         network
-      })
-      // build txs
-      let other_cet1_txb = new TransactionBuilder(this.network)
-      other_cet1_txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
-      other_cet1_txb.addOutput(cet_spend_key.address,this.other.cet_amounts[i]-DEFAULT_FEE/2)
-      other_cet1_txb.addOutput(this.me.final_output_addr,this.me.cet_amounts[i]-DEFAULT_FEE/2)
-      this.other_cets_txid.push(other_cet1_txb.buildIncomplete().getId())
-      this.other_cets_txb.push(other_cet1_txb)
+      }))
+      // construct CET p2wsh address
+      const witnessScript = cltvCETtxOutputWitnessScript(this.other_cet_spend_key[i].pubkey, this.me.sweep_pub_key, this.me.cltv_locktime)
+      const p2wsh_addr = payments.p2wsh({redeem: {output: witnessScript, network}, network})
+
+      const txb = new TransactionBuilder(network)
+      txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
+      txb.addOutput(p2wsh_addr.address,this.other.cet_amounts[i]-DEFAULT_FEE/2)
+      txb.addOutput(this.me.final_output_addr,this.me.cet_amounts[i]-DEFAULT_FEE/2)
+
+      this.other_cets_txid.push(txb.buildIncomplete().getId())
+      this.other_cets_txb.push(txb)
     }
   }
 
@@ -206,19 +216,22 @@ export class DLC_Proposal {
     let network = this.network
     // build txs
     for (let i=0;i<this.oracle.keys.length;i++) {
-      // construct CET spending keys and store prevScriptOuts
+      // spend key for branch (A+P)
       this.my_cets_spend_key.push( payments.p2wpkh({
         pubkey: getSpendingPubKey(this.me.oracle_messages[i],this.me.sweep_pub_key),
         network
       }))
-      this.my_cets_spend_key_prevScriptOut.push(p2shGetPrevOutScript(this.my_cets_spend_key[i],this.network))
+      // construct CET p2wsh address
+      const witnessScript = cltvCETtxOutputWitnessScript(this.my_cets_spend_key[i].pubkey, this.other.sweep_pub_key, this.me.cltv_locktime)
+      const p2wsh_addr = payments.p2wsh({redeem: {output: witnessScript, network}, network})
 
-      let my_cet1_txb = new TransactionBuilder(this.network)
-      my_cet1_txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
-      my_cet1_txb.addOutput(this.my_cets_spend_key[i].address,this.me.cet_amounts[i]-DEFAULT_FEE/2)
-      my_cet1_txb.addOutput(this.other.final_output_addr,this.other.cet_amounts[i]-DEFAULT_FEE/2)
-      this.my_cets_txid.push(my_cet1_txb.buildIncomplete().getId())
-      this.my_cets_txb.push(my_cet1_txb)
+      const txb = new TransactionBuilder(network)
+      txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
+      txb.addOutput(p2wsh_addr.address,this.me.cet_amounts[i]-DEFAULT_FEE/2)
+      txb.addOutput(this.other.final_output_addr,this.other.cet_amounts[i]-DEFAULT_FEE/2)
+
+      this.my_cets_txid.push(txb.buildIncomplete().getId())
+      this.my_cets_txb.push(txb)
     }
   }
 
@@ -238,6 +251,38 @@ export class DLC_Proposal {
       this.my_cets_txb[i].sign(txb_sign_arg,funding_key)
       this.other_cets_txb[i].sign(txb_sign_arg,funding_key)
     }
+  }
+  // spend CET output0 with my sweep key + oracle key
+  spendMyCETtxOutput0(cet_case: number, key: any) {
+    let amount = this.my_cets_tx[cet_case].outs[0].value
+    const txb = new TransactionBuilder(this.network)
+    txb.setLockTime(0)
+    txb.addInput(this.my_cets_txid[cet_case],0,0xfffffffe)
+    txb.addOutput(this.me.final_output_addr, amount-DEFAULT_FEE)
+    const tx = txb.buildIncomplete()
+
+    // tweak key with oracle msg
+    let tweaked_key = getSpendingPrivKey(this.me.oracle_messages[cet_case],key)
+    let witnessScript = cltvCETtxOutputWitnessScript(
+      this.my_cets_spend_key[cet_case].pubkey,
+      this.other.sweep_pub_key,
+      this.me.cltv_locktime)
+    return myCetTxOutput0Sign(tx, witnessScript, amount, tweaked_key)
+  }
+  // spend CET output0 with my sweep key
+  spendOtherCETtxOutput0(cet_case: number, key: any) {
+    let amount = this.my_cets_tx[cet_case].outs[1].value
+    const txb = new TransactionBuilder(this.network)
+    txb.setLockTime(this.me.cltv_locktime)
+    txb.addInput(this.other_cets_txid[cet_case],0,0xfffffffe)
+    txb.addOutput(this.me.final_output_addr, amount-DEFAULT_FEE)
+    const tx = txb.buildIncomplete()
+
+    let witnessScript = cltvCETtxOutputWitnessScript(
+      this.other_cet_spend_key[cet_case].pubkey,
+      this.me.sweep_pub_key,
+      this.me.cltv_locktime)
+    return otherCetTxOutput0Sign(tx, witnessScript, amount, key)
   }
 
   buildRefundTx() {
@@ -284,7 +329,6 @@ export class DLC_Proposal {
     }
     // get refund tx sig
     let refund_tx_sig = this.refund_txb.buildIncomplete().ins[0].witness.slice(1,3)
-
     console.log("Successfully build Accept object.")
     this.me_accept = new DLC_Accept(
       12345,
@@ -298,7 +342,7 @@ export class DLC_Proposal {
     return this.me_accept
   }
 
-  // include DLC_Accept object to own transaction builders and build transactions
+  // include DLC_Accept object in own transaction builders and build transactions
   includeAcceptObject(signatures: DLC_Accept) {
     this.other_accept = signatures
     //funding tx
@@ -308,9 +352,9 @@ export class DLC_Proposal {
     }
     let funding_tx = this.funding_txb.buildIncomplete()
     let signed = 0
-    funding_tx.ins.forEach( input => {
+    funding_tx.ins.forEach( (input, index) => {
       if (input.witness.length == 0) {
-        input.witness = signatures.funding_tx_sigs[signed]
+        input.witness = signatures.funding_tx_sigs[index]
         signed++
       }
     })

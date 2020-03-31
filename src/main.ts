@@ -1,7 +1,6 @@
 import { ECPair, payments, networks } from 'bitcoinjs-lib'
 import { DLC_Proposal } from './proposal'
-import { btcToSat, COIN, satToBtc, msgToPrivKey } from './util'
-import * as ecc from 'tiny-secp256k1'
+import { btcToSat, satToBtc } from './util'
 
 /**
   For DLC we require:
@@ -20,7 +19,7 @@ import * as ecc from 'tiny-secp256k1'
     - network: {bitcoin, testnet, regtest}
     - DLC parameters:
       - funding amount for each participant
-      - (not implemented) CSV delay
+      - CLTV delay
       - Refund Locktime (block or unix time after which refund tx is valid)
  */
 
@@ -57,10 +56,11 @@ let alice = {
   init_pub_keys: [alice_init.publicKey],
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
-  init_utxos: [{ "txid":"1972a793607d3d7bd10e0de68bb67b719070c1a701bec120d63b808bb84a03a2","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":btcToSat(0.50010000) }],
+  init_utxos: [{ "txid":"169755dc47a2613c2e8a3caeaac204e0f62717309b4f28203126177324e1a355","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":btcToSat(0.50010000) }],
   change_amount: 10000,
   change_addr: alice_change_p2wpkh.address,
   final_output_addr: alice_change_p2wpkh.address,
+  cltv_locktime: 100,
   refund_locktime: 500
 }
 let bob = {
@@ -70,14 +70,15 @@ let bob = {
   init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
-  init_utxos: [{ "txid":"615fc089974fac4bd17fde1a2a848432069f3b652d9ee41e7eeaf872c17f1b76","vout":0,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":btcToSat(1.50010000) }],
+  init_utxos: [{ "txid":"16bcd842e0991f5bce1c01d5b0dad5cedec2bd2ef84a202d56735f9f774ac5df","vout":0,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":btcToSat(1.50010000) }],
   change_amount: 10000,
   change_addr: bob_change_p2wpkh.address,
   final_output_addr: bob_change_p2wpkh.address,
+  cltv_locktime: 100,
   refund_locktime: 500
 }
 
-// setup()
+setup()
 run()
 
 function setup() {
@@ -98,8 +99,8 @@ function run() {
   alice_prop.signCETtxbs(alice_funding)
   alice_prop.signRefundTxb(alice_funding)
 
-  let signatures1 = alice_prop.buildAcceptObject().serialize()
-  // console.log(signatures1)
+  let alice_sigs = alice_prop.buildAcceptObject()
+  // console.log(alice_sigs)
 
   let bob_prop = new DLC_Proposal(network)
   bob_prop.me = bob
@@ -111,11 +112,24 @@ function run() {
   bob_prop.signFundingTxb([ bob_init ])
   bob_prop.signCETtxbs(bob_funding)
   bob_prop.signRefundTxb(bob_funding)
+  //include alice's sigs into bobs transactions
+  bob_prop.includeAcceptObject(alice_sigs)
 
-  bob_prop.includeAcceptObjectSerialized(signatures1)
+  let bob_sigs = bob_prop.buildAcceptObject()
+  // include bobs sigs into Alice's transactions
+  alice_prop.includeAcceptObject(bob_sigs)
 
   console.log("\nfunding_tx: "+bob_prop.funding_tx.toHex())
   console.log("\nmy_cet1_tx: "+bob_prop.my_cets_tx[0].toHex())
   console.log("\nmy_cet2_tx: "+bob_prop.my_cets_tx[1].toHex())
   console.log("\nrefund_tx: "+bob_prop.refund_tx.toHex())
+
+  // BROADCAST FUNDING TX AND BOBS CET1 TX
+  // bob spend final cet1 output
+  let spending_tx_bob = bob_prop.spendMyCETtxOutput0(0,bob_sweep)
+  console.log("\nbob spending tx: "+spending_tx_bob.toHex())
+  // alice spend finale CET 1 after CLTV time passed
+  let spending_tx_alice = alice_prop.spendOtherCETtxOutput0(0,alice_sweep)
+  console.log("\nalice spending tx: "+spending_tx_alice.toHex())
+
 }

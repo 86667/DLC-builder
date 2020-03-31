@@ -1,5 +1,5 @@
-import { ECPair, TransactionBuilder } from 'bitcoinjs-lib'
-import { networks, payments } from 'bitcoinjs-lib'
+import { ECPair, TransactionBuilder, Transaction } from 'bitcoinjs-lib'
+import { networks, opcodes, payments, script } from 'bitcoinjs-lib'
 import * as ecc from 'tiny-secp256k1'
 
 export const COIN=100000000
@@ -40,13 +40,50 @@ export function multisig2of2(key1: Buffer, key2: Buffer, network: any) {
     ], network})
     return payments.p2wsh({redeem: p2ms, network})
 }
-// return p2sh address
-export function multisig3of2(key1: Buffer, key2: Buffer, key3: Buffer, network: any) {
-  const p2ms = payments.p2ms({
-    m: 2, pubkeys: [
-    key1,key2,key3
-    ], network})
-    return payments.p2sh({redeem: p2ms, network})
+// make CET outptut 0:
+// - tweaked 'my' private key sig to unlock winning amount
+//    || 'other' key sig after delay for winning amount
+export function cltvCETtxOutputWitnessScript(expected_spender: Buffer, delayed_spender: Buffer, locktime: number) {
+  return script.compile([
+    opcodes.OP_IF,
+    script.number.encode(locktime),
+    opcodes.OP_CHECKLOCKTIMEVERIFY,
+    opcodes.OP_DROP,
+    delayed_spender,
+    opcodes.OP_CHECKSIG,
+    opcodes.OP_ELSE,
+    expected_spender,
+    opcodes.OP_CHECKSIG,
+    opcodes.OP_ENDIF
+  ])
+}
+// sign a branch of 'my' CET (A + P) option
+export function myCetTxOutput0Sign(tx: Transaction, witnessScript: Buffer, amount: number,  key: any) {
+  const signatureHash = tx.hashForWitnessV0(0, witnessScript, amount, Transaction.SIGHASH_ALL)
+  tx.setWitness(0, payments.p2wsh({
+    redeem: {
+      input: script.compile([
+        script.signature.encode(key.sign(signatureHash), Transaction.SIGHASH_ALL),
+        opcodes.OP_FALSE
+      ]),
+      output: witnessScript
+    }
+  }).witness)
+  return tx
+}
+// sign a branch of 'other' CET (delay + B) option
+export function otherCetTxOutput0Sign(tx: Transaction, witnessScript: Buffer, amount: number, key: any) {
+  const signatureHash = tx.hashForWitnessV0(0, witnessScript, amount, Transaction.SIGHASH_ALL)
+  tx.setWitness(0, payments.p2wsh({
+    redeem: {
+      input: script.compile([
+        script.signature.encode(key.sign(signatureHash), Transaction.SIGHASH_ALL),
+        opcodes.OP_TRUE
+      ]),
+      output: witnessScript
+    }
+  }).witness)
+  return tx
 }
 // find prevOutScript for p2sh - this is the scriptPubKey for p2sh output
 export function p2shGetPrevOutScript(p2sh: any, network: any) {
