@@ -105,11 +105,11 @@ export function msgToPubKey(msg: string) {
   return key.publicKey
 }
 // add oracle pub key to sweep funds key
-export function getSpendingPubKey(oracleMsg: string, sweep_pub_key: Buffer) {
-  return ecc.pointAdd(sweep_pub_key,msgToPubKey(oracleMsg))
+export function getSpendingPubKey(sG_value: any, sweep_pub_key: Buffer) {
+  return ecc.pointAdd(sweep_pub_key,sG_value.getEncoded())
 }
 // tweak key to generate spending key from sweep_funds key for some outcome
-export function getSpendingPrivKey(oracleMsg: string, sweep_key: any) {
-  let oracle_msg_priv = msgToPrivKey(oracleMsg)
-  return ECPair.fromPrivateKey(ecc.privateAdd(sweep_key.privateKey,oracle_msg_priv))
+export function getSpendingPrivKey(oracle_sig: number, sweep_key: { privateKey: Buffer }) {
+  return ECPair.fromPrivateKey(
+    ecc.privateAdd(sweep_key.privateKey,Buffer.from(oracle_sig.toString(16),'hex')))
 }

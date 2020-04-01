@@ -9,6 +9,8 @@ import {
   sortAnyType,
   p2shGetPrevOutScript
  } from './util'
+ import { getPubs } from './schnorr'
+ import { Oracle } from './oracle'
 import * as assert from 'assert'
 
 const DEFAULT_FEE = 300
@@ -24,6 +26,7 @@ interface Participant {
   fund_amount: number,
   cet_amounts: number[], // amounts returned to this participant in each case
   oracle_messages: string[], // messages to be signed by oracle
+  oracle_event_id: number, // event id
   init_pub_keys: Buffer[], // pubkeys of funding inputs
   funding_pub_key: Buffer,
   sweep_pub_key: Buffer,
@@ -35,9 +38,6 @@ interface Participant {
   refund_locktime: number
 }
 
-interface Oracle {
-  keys: any[] // full keys for demo
-}
 
 // class containing all info necessary for DLC.
 // This can be passed back and forth between participants until agreement is reached
@@ -45,8 +45,8 @@ interface Oracle {
 export class DLC_Proposal {
   public me: Participant
   public other: Participant
-  public oracle: Oracle = { keys: [] }
-  public oracle_pubKeys: String[] // UNUSED FOR NOW - oracle pubkey for each event
+  public oracle: Oracle
+  oracle_sG_values: any
   network: any
 
   // proposal state
@@ -84,7 +84,6 @@ export class DLC_Proposal {
   isSignable() {
     this.validateParticipants()
     // check all fields set correctly
-    if (this.oracle.keys.length != 2 ) { throw "Not enough Oracle keys "}
     this.signable = true
     return true
   }
@@ -94,7 +93,6 @@ export class DLC_Proposal {
     // verify all fields
     let total_fund_amount = this.other.fund_amount+this.me.fund_amount
     assert.deepEqual(this.me.cet_amounts.length,this.other.cet_amounts.length)
-    assert.equal(this.me.cet_amounts.length,this.oracle.keys.length)
     assert.equal(total_fund_amount == this.me.cet_amounts.reduce((a, b) => a + b, 0), true)
     assert.equal(total_fund_amount == this.other.cet_amounts.reduce((a, b) => a + b, 0), true)
     for (let i=0;i<this.other.cet_amounts.length;i++) {
@@ -121,12 +119,18 @@ export class DLC_Proposal {
   buildTxbs() {
     if (!(this.signable)) { throw "proposal not ready for signatures. please run isSignable()"}
 
+    // find oracles sG values
+    this.oracle_sG_values = getPubs(
+      this.oracle.getR(this.me.oracle_event_id),
+      this.oracle.pub_key,
+      this.me.oracle_messages)
+
     // Generate transactions
     this.buildFundingTxb()
     this.buildOthersCETs()
     this.buildMyCETs()
     this.buildRefundTx()
-    console.log("Funding, CET 1, CET 2 and refund transactions successfully built.")
+    console.log("Funding, CETs and refund transactions successfully built.")
   }
 
   buildFundingTxb() {
@@ -192,10 +196,10 @@ export class DLC_Proposal {
 
   buildOthersCETs() {
     let network = this.network
-    for (let i=0;i<this.oracle.keys.length;i++) {
+    for (let i=0;i<this.me.oracle_messages.length;i++) {
       // spend key for branch (A+P)
       this.other_cet_spend_key.push(payments.p2wpkh({
-        pubkey: getSpendingPubKey(this.me.oracle_messages[i],this.other.sweep_pub_key),
+        pubkey: getSpendingPubKey(this.oracle_sG_values[i],this.other.sweep_pub_key),
         network
       }))
       // construct CET p2wsh address
@@ -215,10 +219,10 @@ export class DLC_Proposal {
   buildMyCETs() {
     let network = this.network
     // build txs
-    for (let i=0;i<this.oracle.keys.length;i++) {
+    for (let i=0;i<this.me.oracle_messages.length;i++) {
       // spend key for branch (A+P)
       this.my_cets_spend_key.push( payments.p2wpkh({
-        pubkey: getSpendingPubKey(this.me.oracle_messages[i],this.me.sweep_pub_key),
+        pubkey: getSpendingPubKey(this.oracle_sG_values[i],this.me.sweep_pub_key),
         network
       }))
       // construct CET p2wsh address
@@ -247,13 +251,13 @@ export class DLC_Proposal {
       witnessScript: this.funding_p2sh.redeem.output,
       witnessValue: this.me.fund_amount + this.other.fund_amount
     }
-    for (let i=0;i<this.oracle.keys.length;i++) {
+    for (let i=0;i<this.me.oracle_messages.length;i++) {
       this.my_cets_txb[i].sign(txb_sign_arg,funding_key)
       this.other_cets_txb[i].sign(txb_sign_arg,funding_key)
     }
   }
   // spend CET output0 with my sweep key + oracle key
-  spendMyCETtxOutput0(cet_case: number, key: any) {
+  spendMyCETtxOutput0(cet_case: number, oracle_sig: any, key: any) {
     let amount = this.my_cets_tx[cet_case].outs[0].value
     const txb = new TransactionBuilder(this.network)
     txb.setLockTime(0)
@@ -262,7 +266,7 @@ export class DLC_Proposal {
     const tx = txb.buildIncomplete()
 
     // tweak key with oracle msg
-    let tweaked_key = getSpendingPrivKey(this.me.oracle_messages[cet_case],key)
+    let tweaked_key = getSpendingPrivKey(oracle_sig,key)
     let witnessScript = cltvCETtxOutputWitnessScript(
       this.my_cets_spend_key[cet_case].pubkey,
       this.other.sweep_pub_key,
@@ -324,7 +328,7 @@ export class DLC_Proposal {
     })
     // get CET signatures
     let other_cets_tx_sig = []
-    for (let i=0;i<this.oracle.keys.length;i++) {
+    for (let i=0;i<this.me.oracle_messages.length;i++) {
       other_cets_tx_sig.push(this.other_cets_txb[i].buildIncomplete().ins[0].witness.slice(1,3))
     }
     // get refund tx sig
@@ -364,7 +368,7 @@ export class DLC_Proposal {
     this.funding_tx = funding_tx
 
     // cet txs
-    for (let i=0;i<this.oracle.keys.length;i++) {
+    for (let i=0;i<this.me.oracle_messages.length;i++) {
       if (signatures.cets_txid[i] &&
         signatures.cets_txid[i] != this.my_cets_txid[i]) {
         throw "ERROR: cet"+i+" txid does not match."
@@ -392,9 +396,7 @@ export class DLC_Proposal {
       refund_tx.ins[0].witness[1] = signatures.refund_tx_sig[1]
     }
     this.refund_tx = refund_tx
-
-    console.log("Successfully included Accept object signatures into all transactions."
-      + " Fully built transactions found in: this.funding_tx, this.my_cet1, this.my_cet2 and this.refund_tx.")
+    console.log("Successfully included Accept object signatures into all transactions.")
   }
   includeAcceptObjectSerialized(serialised_signatures: any[]) {
     if (!(this.other_accept)) {
