@@ -81,7 +81,7 @@ let bob = {
   refund_locktime: 500
 }
 
-setup()
+// setup()
 run()
 
 function setup() {
@@ -106,7 +106,7 @@ function run() {
   alice_prop.signRefundTxb(alice_funding)
 
   let alice_sigs = alice_prop.buildAcceptObject()
-  // console.log(alice_sigs)
+  let alice_sigs_serialized = alice_sigs.serialize()
 
   let bob_prop = new DLC_Proposal(network)
   bob_prop.me = bob
@@ -118,12 +118,13 @@ function run() {
   bob_prop.signFundingTxb([ bob_init ])
   bob_prop.signCETtxbs(bob_funding)
   bob_prop.signRefundTxb(bob_funding)
-  //include alice's sigs into bobs transactions
-  bob_prop.includeAcceptObject(alice_sigs)
 
-  let bob_sigs = bob_prop.buildAcceptObject()
+  //include alice's sigs into bobs transactions
+  // bob_prop.includeAcceptObject(alice_sigs)
+  bob_prop.includeAcceptObjectSerialized(alice_sigs_serialized)
+
   // include bobs sigs into Alice's transactions
-  alice_prop.includeAcceptObject(bob_sigs)
+  alice_prop.includeAcceptObject(bob_prop.buildAcceptObject())
 
   console.log("\nfunding_tx: "+bob_prop.funding_tx.toHex())
   console.log("\nmy_cet1_tx: "+bob_prop.my_cets_tx[0].toHex())

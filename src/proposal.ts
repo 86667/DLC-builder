@@ -1,4 +1,4 @@
-import { TransactionBuilder, Transaction, payments  } from 'bitcoinjs-lib'
+import { TransactionBuilder, Transaction, payments } from 'bitcoinjs-lib'
 import {
   cltvCETtxOutputWitnessScript,
   getSpendingPrivKey,
@@ -66,9 +66,9 @@ export class DLC_Proposal {
   public funding_txid: string
   public my_cets_txb: TransactionBuilder[] = []
   public my_cets_tx: Transaction[] = []
-  public my_cets_txid: string[] = []
+  public my_cet_txids: string[] = []
   public other_cets_txb: TransactionBuilder[] = []
-  public other_cets_txid: string[] = []
+  public other_cet_txids: string[] = []
   public refund_txb: TransactionBuilder
   public refund_tx: Transaction
   public refund_txid: string
@@ -211,7 +211,7 @@ export class DLC_Proposal {
       txb.addOutput(p2wsh_addr.address,this.other.cet_amounts[i]-DEFAULT_FEE/2)
       txb.addOutput(this.me.final_output_addr,this.me.cet_amounts[i]-DEFAULT_FEE/2)
 
-      this.other_cets_txid.push(txb.buildIncomplete().getId())
+      this.other_cet_txids.push(txb.buildIncomplete().getId())
       this.other_cets_txb.push(txb)
     }
   }
@@ -234,7 +234,7 @@ export class DLC_Proposal {
       txb.addOutput(p2wsh_addr.address,this.me.cet_amounts[i]-DEFAULT_FEE/2)
       txb.addOutput(this.other.final_output_addr,this.other.cet_amounts[i]-DEFAULT_FEE/2)
 
-      this.my_cets_txid.push(txb.buildIncomplete().getId())
+      this.my_cet_txids.push(txb.buildIncomplete().getId())
       this.my_cets_txb.push(txb)
     }
   }
@@ -261,7 +261,7 @@ export class DLC_Proposal {
     let amount = this.my_cets_tx[cet_case].outs[0].value
     const txb = new TransactionBuilder(this.network)
     txb.setLockTime(0)
-    txb.addInput(this.my_cets_txid[cet_case],0,0xfffffffe)
+    txb.addInput(this.my_cet_txids[cet_case],0,0xfffffffe)
     txb.addOutput(this.me.final_output_addr, amount-DEFAULT_FEE)
     const tx = txb.buildIncomplete()
 
@@ -278,7 +278,7 @@ export class DLC_Proposal {
     let amount = this.my_cets_tx[cet_case].outs[1].value
     const txb = new TransactionBuilder(this.network)
     txb.setLockTime(this.me.cltv_locktime)
-    txb.addInput(this.other_cets_txid[cet_case],0,0xfffffffe)
+    txb.addInput(this.other_cet_txids[cet_case],0,0xfffffffe)
     txb.addOutput(this.me.final_output_addr, amount-DEFAULT_FEE)
     const tx = txb.buildIncomplete()
 
@@ -324,22 +324,29 @@ export class DLC_Proposal {
     // get funding tx signatures
     let funding_tx_sigs = []
     this.funding_txb.buildIncomplete().ins.forEach(input => {
-      funding_tx_sigs.push(input.witness)
+      if (input.witness.length != 0) { funding_tx_sigs.push(input.witness) }
     })
     // get CET signatures
-    let other_cets_tx_sig = []
+    let other_cet_tx_sigs = []
     for (let i=0;i<this.me.oracle_messages.length;i++) {
-      other_cets_tx_sig.push(this.other_cets_txb[i].buildIncomplete().ins[0].witness.slice(1,3))
+      let sigs = this.other_cets_txb[i].buildIncomplete().ins[0].witness.slice(1,3)
+      sigs.forEach(sig => {
+        if (sig.length != 0) { other_cet_tx_sigs.push(sig) }
+    })
     }
     // get refund tx sig
-    let refund_tx_sig = this.refund_txb.buildIncomplete().ins[0].witness.slice(1,3)
+    let refund_tx_sig: Buffer
+    let sigs = this.refund_txb.buildIncomplete().ins[0].witness.slice(1,3)
+    sigs.forEach(sig => {
+      if (sig.length != 0) { refund_tx_sig = sig }
+    })
     console.log("Successfully build Accept object.")
     this.me_accept = new DLC_Accept(
       12345,
       funding_tx_sigs,
       this.funding_txid,
-      other_cets_tx_sig,
-      this.other_cets_txid,
+      other_cet_tx_sigs,
+      this.other_cet_txids,
       refund_tx_sig,
       this.refund_txid
     )
@@ -356,9 +363,9 @@ export class DLC_Proposal {
     }
     let funding_tx = this.funding_txb.buildIncomplete()
     let signed = 0
-    funding_tx.ins.forEach( (input, index) => {
+    funding_tx.ins.forEach( (input) => {
       if (input.witness.length == 0) {
-        input.witness = signatures.funding_tx_sigs[index]
+        input.witness = signatures.funding_tx_sigs[signed]
         signed++
       }
     })
@@ -369,16 +376,15 @@ export class DLC_Proposal {
 
     // cet txs
     for (let i=0;i<this.me.oracle_messages.length;i++) {
-      if (signatures.cets_txid[i] &&
-        signatures.cets_txid[i] != this.my_cets_txid[i]) {
+      if (signatures.cet_txids[i] &&
+        signatures.cet_txids[i] != this.my_cet_txids[i]) {
         throw "ERROR: cet"+i+" txid does not match."
       }
       let my_cet_tx = this.my_cets_txb[i].buildIncomplete()
-      if (!(my_cet_tx.ins[0].witness[1].length)) { // if sig not present
-        my_cet_tx.ins[0].witness[1] = signatures.cets_tx_sig[i][0]
-      }
-      if (!(my_cet_tx.ins[0].witness[2].length)) { // if sig not present
-        my_cet_tx.ins[0].witness[1] = signatures.cets_tx_sig[i][1]
+      if (my_cet_tx.ins[0].witness[1].length == 0) { // if sig not present
+        my_cet_tx.ins[0].witness[1] = signatures.cet_tx_sigs[i]
+      } else {
+        my_cet_tx.ins[0].witness[2] = signatures.cet_tx_sigs[i]
       }
       this.my_cets_tx.push(my_cet_tx)
     }
@@ -389,16 +395,15 @@ export class DLC_Proposal {
       throw "ERROR: refund txid does not match."
     }
     let refund_tx = this.refund_txb.buildIncomplete()
-    if (!(refund_tx.ins[0].witness[1].length)) { // if sig not present
-      refund_tx.ins[0].witness[1] = signatures.refund_tx_sig[0]
-    }
-    if (!(refund_tx.ins[0].witness[2].length)) { // if sig not present
-      refund_tx.ins[0].witness[1] = signatures.refund_tx_sig[1]
+    if (refund_tx.ins[0].witness[1].length == 0) { // if sig not present
+      refund_tx.ins[0].witness[1] = signatures.refund_tx_sig
+    } else {
+      refund_tx.ins[0].witness[2] = signatures.refund_tx_sig
     }
     this.refund_tx = refund_tx
     console.log("Successfully included Accept object signatures into all transactions.")
   }
-  includeAcceptObjectSerialized(serialised_signatures: any[]) {
+  includeAcceptObjectSerialized(serialised_signatures: Buffer) {
     if (!(this.other_accept)) {
       var accept = new DLC_Accept()
     }
@@ -409,48 +414,118 @@ export class DLC_Proposal {
 
 // object with signatures from all signed txs for sending to other participant
 export class DLC_Accept {
-  public proposalId: number
+  public proposalId: number = 1
   public funding_tx_sigs: Buffer[][]
   public funding_txid: string // for validation of tx building
-  public cets_tx_sig: Buffer[][]
-  public cets_txid: string[]
-  public refund_tx_sig: Buffer[]
+  public cet_tx_sigs: Buffer[]
+  public cet_txids: string[]
+  public refund_tx_sig: Buffer
   public refund_txid: string
   constructor(
     proposalId?: number,
     funding_tx_sigs?: Buffer[][],
     funding_txid?: string,
-    cets_tx_sig?: Buffer[][],
-    cets_txid?: string[],
-    refund_tx_sig?: Buffer[],
+    cet_tx_sigs?: Buffer[],
+    cet_txids?: string[],
+    refund_tx_sig?: Buffer,
     refund_txid?: string
   ){
+    if (proposalId >= 2**16) { throw "proposal ID must be 16-bit"}
     this.proposalId = proposalId
     this.funding_tx_sigs = funding_tx_sigs
     this.funding_txid = funding_txid
-    this.cets_tx_sig = cets_tx_sig
-    this.cets_txid = cets_txid
+    this.cet_tx_sigs = cet_tx_sigs
+    this.cet_txids = cet_txids
     this.refund_tx_sig = refund_tx_sig
     this.refund_txid = refund_txid
   }
   // TODO: do this properly
   serialize() {
-    return [
-        this.proposalId,
-        this.funding_tx_sigs,
-        this.cets_tx_sig,
-        this.refund_tx_sig
-      ]
-  }
-  // TODO: do this properly
-  deserialize(data: any[]) {
-    this.proposalId = data[0]
-    this.funding_tx_sigs = data[1]
-    this.cets_tx_sig = data[2]
-    this.refund_tx_sig = data[3]
-    this.funding_txid = null
-    this.cets_txid = []
-    this.refund_txid = null
+    // buffer with ordering and size info of signatures
+    let buffer = Buffer.allocUnsafe(3);
+    let offset = 0
 
+    // proposal ID
+    offset = buffer.writeUInt16LE(this.proposalId, offset)
+
+    // funding sigs data
+    // number of funding sigs to come
+    offset = buffer.writeUInt8(this.funding_tx_sigs.length, offset)
+    // for each funding tx signature create new buffer and append.
+    // 'sig_data' buffer is:
+    //     number of entries in sig || size of entry 1 || entry 1 || size of entry 2 || entry 2 ...
+    let funding_sig_data: Buffer[] = [] // array of sig_data buffers to concat to main buffer
+    this.funding_tx_sigs.forEach(sig => {
+      let sig_data = Buffer.alloc(1)
+      sig_data.writeUInt8(sig.length,0)
+      sig.forEach(item => {
+        let item_data = Buffer.alloc(1)
+        item_data.writeUInt8(item.length,0)
+        item_data = Buffer.concat([ item_data, item ])
+        sig_data = Buffer.concat([ sig_data, item_data ])
+      })
+      funding_sig_data.push(sig_data)
+    })
+    buffer = Buffer.concat([ buffer ].concat(funding_sig_data, Buffer.alloc(1)))
+    offset = buffer.length-1
+
+    // cet sigs data
+    // number of cet sigs to come
+    offset = buffer.writeUInt8(this.cet_tx_sigs.length, offset)
+    let cet_sig_data: Buffer[] = []
+    this.cet_tx_sigs.forEach(sig => {
+      let sig_data = Buffer.alloc(1)
+      sig_data.writeUInt8(sig.length,0)
+      cet_sig_data.push(Buffer.concat([ sig_data, sig ]))
+    })
+    // concat main buffer with cet data and refund sig
+    buffer = Buffer.concat([ buffer ].concat(cet_sig_data, this.refund_tx_sig))
+    return buffer
   }
+
+  deserialize(data: Buffer) {
+    let funding_tx_sigs = []
+    let offset = 0
+    let proposalId = data.readUInt16LE(offset)
+    offset += 2
+
+    // funding sigs
+    let num_funding_sigs = data.readUInt8(offset)
+    offset += 1
+    for (let i=0;i<num_funding_sigs;i++) {
+      let num_items_in_sig = data.readUInt8(offset)
+      offset += 1
+      let sig = []
+      for (let i=0;i<num_items_in_sig;i++) {
+        let item_len = data.readUInt8(offset)
+        offset += 1
+        let item = data.slice(offset,offset+item_len)
+        offset += item_len
+        sig.push(item)
+      }
+      funding_tx_sigs.push(sig)
+    }
+
+    // CET sigs
+    let num_cet_sigs = data.readUInt8(offset)
+    let cet_tx_sigs = []
+    offset += 1
+    for (let i=0;i<num_cet_sigs;i++) {
+      let item_len = data.readUInt8(offset)
+      offset += 1
+      let item = data.slice(offset,offset+item_len)
+      offset += item_len
+      cet_tx_sigs.push(item)
+    }
+
+    this.proposalId = proposalId
+    this.funding_tx_sigs = funding_tx_sigs
+    this.cet_tx_sigs = cet_tx_sigs
+    this.refund_tx_sig = data.slice(offset, data.length)
+    this.funding_txid = null
+    this.cet_txids = []
+    this.refund_txid = null
+  }
+
+
 }
