@@ -11,15 +11,15 @@ Then the Participant message consists of:
 | item | size (bytes) |
 | :--: | :-: |
 | 1 16-bit integers | 2 |
-| (2+`n`) 64-bit integers | 1+(2+`n`)*8 |
+| (3+`n`) 64-bit integers | (3+`n`)*6 |
 | `n` strings | ~`n`*33 |
 | 2 addresses | 2*34 |
 | 2 public keys | 2*65 |
 | `m` inputs | ~`m`*70
-| **total** | **~217+41`n`+70`m`** |
+| **total** | **~218+41`n`+70`m`** |
 
 
-Assuming oracle messages are 32 byte string, a generous estimate for Participant message size is 350+41`n` bytes.
+Assuming oracle messages are 32 byte string, a fair estimate for Participant message size is 350+39`n` bytes.
 
 ![Participant-graph](participant_graph.png)
 

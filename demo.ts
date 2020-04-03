@@ -1,5 +1,6 @@
 import { ECPair, payments, networks } from 'bitcoinjs-lib'
 import { DLC_Proposal } from './proposal'
+import { Participant } from './participant'
 import { btcToSat, satToBtc } from './util'
 import { Oracle } from './Oracle'
 
@@ -50,34 +51,34 @@ let bob_sweep = ECPair.fromWIF("cVFMT5nYv73PxGHcFgh28UkGZc1vYa388wuBW2KqA8357ebC
 let alice_change_p2wpkh = payments.p2wpkh({pubkey: alice_init.publicKey, network})
 let bob_change_p2wpkh = payments.p2wpkh({pubkey: bob_init.publicKey, network})
 
-let alice = {
-  fund_amount: 50000000,
-  cet_amounts: [ 150000000,50000000 ],
-  oracle_messages: [ "1", "2" ],
-  oracle_event_id: 0,
-  funding_pub_key: alice_funding.publicKey,
-  sweep_pub_key: alice_sweep.publicKey,
-  init_utxos: [{ "txid":"d002255a571e9dc4deeb9b4197dc7c91cc148178eb67fcfb1dca57595b762140","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":btcToSat(0.50010000) }],
-  change_amount: 10000,
-  change_addr: alice_change_p2wpkh.address,
-  final_output_addr: alice_change_p2wpkh.address,
-  cltv_locktime: 100,
-  refund_locktime: 500
-}
-let bob = {
-  fund_amount: 150000000,
-  cet_amounts: [ 50000000, 150000000 ],
-  oracle_messages: [ "1", "2" ],
-  oracle_event_id: 0,
-  funding_pub_key: bob_funding.publicKey,
-  sweep_pub_key: bob_sweep.publicKey,
-  init_utxos: [{ "txid":"5849465dc9971a7ee2133987733911e2088a8dece174cb8e8e6a8a9e66cdbac5","vout":1,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":btcToSat(1.50010000) }],
-  change_amount: 10000,
-  change_addr: bob_change_p2wpkh.address,
-  final_output_addr: bob_change_p2wpkh.address,
-  cltv_locktime: 100,
-  refund_locktime: 500
-}
+let alice = new Participant(
+  50000000,
+  [ 150000000,50000000 ],
+  [ "1", "2" ],
+  0,
+  alice_funding.publicKey,
+  alice_sweep.publicKey,
+  [{ "txid":"d002255a571e9dc4deeb9b4197dc7c91cc148178eb67fcfb1dca57595b762140","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":btcToSat(0.50010000) }],
+  10000,
+  alice_change_p2wpkh.address,
+  alice_change_p2wpkh.address,
+  100,
+  500
+)
+let bob = new Participant(
+  150000000,
+  [ 50000000, 150000000 ],
+  [ "1", "2" ],
+  0,
+  bob_funding.publicKey,
+  bob_sweep.publicKey,
+  [{ "txid":"5849465dc9971a7ee2133987733911e2088a8dece174cb8e8e6a8a9e66cdbac5","vout":1,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":btcToSat(1.50010000) }],
+  10000,
+  bob_change_p2wpkh.address,
+  bob_change_p2wpkh.address,
+  100,
+  500
+)
 export { alice, bob, alice_init, alice_funding, network }
 
 // setup()
