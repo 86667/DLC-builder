@@ -27,7 +27,6 @@ interface Participant {
   cet_amounts: number[], // amounts returned to this participant in each case
   oracle_messages: string[], // messages to be signed by oracle
   oracle_event_id: number, // event id
-  init_pub_keys: Buffer[], // pubkeys of funding inputs
   funding_pub_key: Buffer,
   sweep_pub_key: Buffer,
   init_utxos: input[], // funding inputs
@@ -104,8 +103,6 @@ export class DLC_Proposal {
     assert.equal(this.other.funding_pub_key.length==33,true)
     assert.equal(this.me.sweep_pub_key.length==33,true)
     assert.equal(this.other.sweep_pub_key.length==33,true)
-    assert.equal(this.me.init_pub_keys.length,this.me.init_utxos.length)
-    assert.equal(this.other.init_pub_keys.length,this.other.init_utxos.length)
     assert.equal(this.other.change_amount > DEFAULT_FEE/2, true)
     assert.equal(this.me.change_addr.length==44,true)
     assert.equal(this.other.change_addr.length==44,true)

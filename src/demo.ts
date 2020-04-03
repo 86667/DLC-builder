@@ -55,7 +55,6 @@ let alice = {
   cet_amounts: [ 150000000,50000000 ],
   oracle_messages: [ "1", "2" ],
   oracle_event_id: 0,
-  init_pub_keys: [alice_init.publicKey],
   funding_pub_key: alice_funding.publicKey,
   sweep_pub_key: alice_sweep.publicKey,
   init_utxos: [{ "txid":"d002255a571e9dc4deeb9b4197dc7c91cc148178eb67fcfb1dca57595b762140","vout":0,"prevTxScript":"0014af0e2bc17aa42251597e52a7d4792bbf6b556c21","value":btcToSat(0.50010000) }],
@@ -70,7 +69,6 @@ let bob = {
   cet_amounts: [ 50000000, 150000000 ],
   oracle_messages: [ "1", "2" ],
   oracle_event_id: 0,
-  init_pub_keys: [bob_init.publicKey],
   funding_pub_key: bob_funding.publicKey,
   sweep_pub_key: bob_sweep.publicKey,
   init_utxos: [{ "txid":"5849465dc9971a7ee2133987733911e2088a8dece174cb8e8e6a8a9e66cdbac5","vout":1,"prevTxScript":"0014cf90e707600bc808aa9804c596b8ef227718294f","value":btcToSat(1.50010000) }],
@@ -80,9 +78,10 @@ let bob = {
   cltv_locktime: 100,
   refund_locktime: 500
 }
+export { alice, bob, alice_init, alice_funding, network }
 
 // setup()
-run()
+// run()
 
 function setup() {
   console.log("alice address: "+alice_change_p2wpkh.address)

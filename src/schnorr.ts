@@ -15,7 +15,7 @@ export function genPrivKey() {
 export function getPubKey(a: BigInteger) {
   return G.multiply(a)
 }
-// return DLC oracle pubkey (P,R) and k value for this event
+// return DLC oracle pubkey (P,R) and corresponding k value for this event
 export function newR() {
   // TODO: secure random number generator
   const k = BigInteger.fromHex(randHex())
