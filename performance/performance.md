@@ -5,7 +5,7 @@ In a protocol run each participant must send at least 2 messages: A Participant 
 
 Let `n` be the number of CET transactions (possible contract outcomes) and let `m` be the number of UTXOs that the participant is spending in funding the contract.
 
-## Participant
+## Participant message
 
 Then the Participant message consists of:
 | item | size (bytes) |
@@ -21,11 +21,11 @@ Then the Participant message consists of:
 
 Assuming oracle messages are 32 byte string, a fair estimate for Participant message size is 350+39`n` bytes.
 
-![Participant-graph](participant_graph.png)
+<img src="participant-graph.png" alt="drawing" width="300" height="300"/>
 
 10,000 CET transactions creates 0.4MB message.
 
-## Accept
+## Accept message
 
 A serialised Accept object consists of:
 | item | size (bytes) |
@@ -38,13 +38,15 @@ A serialised Accept object consists of:
 
 So a fair estimate for Accept message size is 300+72`n` bytes.
 
-![Accept-graph](accept_graph.png)
+<img src="accept_graph.png" alt="drawing" width="300" height="300"/>
+
 
 10,000 CET transactions creates 0.65MB message.
 
 # Computation time
 
 In milliseconds:
+
 ![computation times](computation_time.png)
 
 # Memory requirements
