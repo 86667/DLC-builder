@@ -1,6 +1,6 @@
 // Accept object is used to send/receive signature information.
-// It is constructed and sent to the other participant, while other's is
-// received and their signatures included in all transactions
+// It is constructed and sent to the other participant. Other participants
+// Accept object is received and their signatures included in all transactions
 export class DLC_Accept {
   public proposalId: number = 1
   public funding_tx_sigs: Buffer[][]
@@ -32,10 +32,8 @@ export class DLC_Accept {
     // buffer with ordering and size info of signatures
     let buffer = Buffer.allocUnsafe(3);
     let offset = 0
-
     // proposal ID
     offset = buffer.writeUInt16LE(this.proposalId, offset)
-
     // funding sigs data
     // number of funding sigs to come
     offset = buffer.writeUInt8(this.funding_tx_sigs.length, offset)
@@ -56,7 +54,6 @@ export class DLC_Accept {
     })
     buffer = Buffer.concat([ buffer ].concat(funding_sig_data, Buffer.alloc(1)))
     offset = buffer.length-1
-
     // cet sigs data
     // number of cet sigs to come
     offset = buffer.writeUInt8(this.cet_tx_sigs.length, offset)
@@ -76,7 +73,6 @@ export class DLC_Accept {
     let offset = 0
     let proposalId = data.readUInt16LE(offset)
     offset += 2
-
     // funding sigs
     let num_funding_sigs = data.readUInt8(offset)
     offset += 1
@@ -93,7 +89,6 @@ export class DLC_Accept {
       }
       funding_tx_sigs.push(sig)
     }
-
     // CET sigs
     let num_cet_sigs = data.readUInt8(offset)
     let cet_tx_sigs = []
@@ -105,7 +100,6 @@ export class DLC_Accept {
       offset += item_len
       cet_tx_sigs.push(item)
     }
-
     this.proposalId = proposalId
     this.funding_tx_sigs = funding_tx_sigs
     this.cet_tx_sigs = cet_tx_sigs

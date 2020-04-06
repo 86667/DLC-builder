@@ -1,18 +1,9 @@
-import { ECPair, TransactionBuilder, Transaction } from 'bitcoinjs-lib'
-import { networks, opcodes, payments, script } from 'bitcoinjs-lib'
+import { ECPair, TransactionBuilder, Transaction, networks, opcodes, payments, script } from 'bitcoinjs-lib'
 import * as ecc from 'tiny-secp256k1'
 
 export const COIN=100000000
 export function btcToSat(value: number) { return Math.ceil(parseFloat((value / (1/COIN)).toString().substring(0,10))) }
 export function satToBtc(value: number) { return parseFloat((value * (1/COIN)).toString().substring(0,10)) }
-
-// gen new key
-export function newKey() {
-  return ECPair.makeRandom({network: networks.regtest}).toWIF()
-}
-export function addrForKey(key: any) {
-  return payments.p2pkh({ pubkey: key.publicKey, network: networks.regtest }).address;
-}
 
 // used in sort() to order txid and addresses
 export function sortAnyType(array: any[]) {
@@ -31,6 +22,8 @@ export function sortAnyType(array: any[]) {
   }
   return array
 }
+
+// return multi sig 2-of-2 p2wsh address for given keys
 export function multisig2of2(key1: Buffer, key2: Buffer, network: any) {
   let keys = [key1,key2]
     .sort((a, b) => (parseInt(a.toString('hex').substring(0,5),16) >= parseInt(b.toString('hex').substring(0,5),16))? 1 : -1)
@@ -85,11 +78,36 @@ export function otherCetTxOutput0Sign(tx: Transaction, witnessScript: Buffer, am
   }).witness)
   return tx
 }
-// find prevOutScript for p2sh - this is the scriptPubKey for p2sh output
-export function p2shGetPrevOutScript(p2sh: any, network: any) {
+// find prevOutScript for p2wsh - this is the scriptPubKey for p2sh output
+export function p2wshGetPrevOutScript(p2wsh: any, network: any) {
   const fund_txb = new TransactionBuilder(network)
-  fund_txb.addOutput(p2sh.address, 999e5)
+  fund_txb.addOutput(p2wsh.address, 999e5)
   return fund_txb.buildIncomplete().outs[0].script.toString('hex')
+}
+
+// add oracle pub key to sweep key
+export function getSpendingPubKey(sG_value: any, sweep_pub_key: Buffer) {
+  return ecc.pointAdd(sweep_pub_key,sG_value.getEncoded())
+}
+
+// tweak key to generate spending key from sweep_funds key for some outcome
+export function getSpendingPrivKey(oracle_sig: number, sweep_key: { privateKey: Buffer }) {
+  return ECPair.fromPrivateKey(
+    ecc.privateAdd(sweep_key.privateKey,Buffer.from(oracle_sig.toString(16),'hex')))
+}
+
+// Testing
+// gen new key
+export function newKey() {
+  return ECPair.makeRandom({network: networks.regtest}).toWIF()
+}
+export function addrForKey(key: any) {
+  return payments.p2pkh({ pubkey: key.publicKey, network: networks.regtest }).address;
+}
+// Turn message into 32 byte public key
+export function msgToPubKey(msg: string) {
+  let key = ECPair.fromPrivateKey(msgToPrivKey(msg))
+  return key.publicKey
 }
 // used in testing. Turn message into 32 byte priv key
 export function msgToPrivKey(msg: string) {
@@ -98,18 +116,4 @@ export function msgToPrivKey(msg: string) {
   // pad with 0s
   msg = msg.concat((new Array(65-msg.length)).join("0"))
   return Buffer.from(msg,'hex')
-}
-// used in testing. Turn message into 32 byte public key
-export function msgToPubKey(msg: string) {
-  let key = ECPair.fromPrivateKey(msgToPrivKey(msg))
-  return key.publicKey
-}
-// add oracle pub key to sweep funds key
-export function getSpendingPubKey(sG_value: any, sweep_pub_key: Buffer) {
-  return ecc.pointAdd(sweep_pub_key,sG_value.getEncoded())
-}
-// tweak key to generate spending key from sweep_funds key for some outcome
-export function getSpendingPrivKey(oracle_sig: number, sweep_key: { privateKey: Buffer }) {
-  return ECPair.fromPrivateKey(
-    ecc.privateAdd(sweep_key.privateKey,Buffer.from(oracle_sig.toString(16),'hex')))
 }

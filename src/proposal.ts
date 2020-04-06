@@ -7,7 +7,7 @@ import {
   myCetTxOutput0Sign,
   otherCetTxOutput0Sign,
   sortAnyType,
-  p2shGetPrevOutScript
+  p2wshGetPrevOutScript
  } from './util'
  import { Participant, Input } from './participant'
 import { getPubs } from './schnorr'
@@ -17,9 +17,23 @@ import * as assert from 'assert'
 
 const DEFAULT_FEE = 300
 
-// class containing all info necessary for DLC.
-// This can be passed back and forth between participants until agreement is reached
+// Class containing all info necessary for DLC.
 // DLC_Accept presence signals proposal stage over (as long as other agrees)
+
+// Protocol run:
+/*
+   1. Alice creates Participant object containing terms of DLC and sends
+    to Bob.
+   2. Bob validates Alice's terms. If he agrees then he updates his Proposal with
+    Alice's Participant data and sends his Participant data to Alice. If he does not agree
+    then he responds with an updated version of Alice's Participant data along with his
+    own Participant data. This process is continued until agreement is reached.
+   3. Once Alice and bob are in agreement, one of them constructs an Accept object and
+    sends it to the other, who responds with the their Accept data if no errors occur.
+   4. The contract is now constructed and ready to begin. Either participant broadcasts
+    their funding tx.
+ */
+
 export class DLC_Proposal {
   public me: Participant
   public other: Participant
@@ -32,8 +46,8 @@ export class DLC_Proposal {
   public complete: boolean = false // ready for tx broadcast
 
   // p2sh addresses and scripts for signings
-  public funding_p2sh: any
-  public funding_p2sh_prevScriptOut: string
+  public funding_p2wsh: any
+  public funding_p2wsh_prevScriptOut: string
   public my_cets_spend_key: any[] = []
   public my_cets_p2wsh: any[] = []
   public other_cet_spend_key: any[] = []
@@ -67,7 +81,9 @@ export class DLC_Proposal {
   }
   validateParticipants() {
     // verify input utxos can cover funds by asking blockchain
+    // ...
     // verify init keys sign for all inputs
+    // ...
     // verify all fields
     let total_fund_amount = this.other.fund_amount+this.me.fund_amount
     assert.deepEqual(this.me.cet_amounts.length,this.other.cet_amounts.length)
@@ -111,8 +127,8 @@ export class DLC_Proposal {
 
   buildFundingTxb() {
     // construct p2h keys
-    this.funding_p2sh = multisig2of2(this.me.funding_pub_key, this.other.funding_pub_key,this.network)
-    this.funding_p2sh_prevScriptOut = p2shGetPrevOutScript(this.funding_p2sh, this.network)
+    this.funding_p2wsh = multisig2of2(this.me.funding_pub_key, this.other.funding_pub_key,this.network)
+    this.funding_p2wsh_prevScriptOut = p2wshGetPrevOutScript(this.funding_p2wsh, this.network)
 
     let txb = new TransactionBuilder(this.network)
     // ensure consistent ordering
@@ -121,7 +137,7 @@ export class DLC_Proposal {
       txb.addInput(input.txid,input.vout,null,Buffer.from(input.prevTxScript,'hex'))
     })
     // outputs - funding p2sh
-    txb.addOutput(this.funding_p2sh.address, this.me.fund_amount + this.other.fund_amount)
+    txb.addOutput(this.funding_p2wsh.address, this.me.fund_amount + this.other.fund_amount)
     // change
     let change_outputs = []
     if (this.me.change_amount > 0) {
@@ -183,7 +199,7 @@ export class DLC_Proposal {
       const p2wsh_addr = payments.p2wsh({redeem: {output: witnessScript, network}, network})
 
       const txb = new TransactionBuilder(network)
-      txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
+      txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2wsh_prevScriptOut,'hex'))
       txb.addOutput(p2wsh_addr.address,this.other.cet_amounts[i]-DEFAULT_FEE/2)
       txb.addOutput(this.me.final_output_addr,this.me.cet_amounts[i]-DEFAULT_FEE/2)
 
@@ -206,7 +222,7 @@ export class DLC_Proposal {
       const p2wsh_addr = payments.p2wsh({redeem: {output: witnessScript, network}, network})
 
       const txb = new TransactionBuilder(network)
-      txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
+      txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2wsh_prevScriptOut,'hex'))
       txb.addOutput(p2wsh_addr.address,this.me.cet_amounts[i]-DEFAULT_FEE/2)
       txb.addOutput(this.other.final_output_addr,this.other.cet_amounts[i]-DEFAULT_FEE/2)
 
@@ -224,7 +240,7 @@ export class DLC_Proposal {
         __D: funding_key.privateKey,
         sign: funding_key.sign
       },
-      witnessScript: this.funding_p2sh.redeem.output,
+      witnessScript: this.funding_p2wsh.redeem.output,
       witnessValue: this.me.fund_amount + this.other.fund_amount
     }
     for (let i=0;i<this.me.oracle_messages.length;i++) {
@@ -268,7 +284,7 @@ export class DLC_Proposal {
   buildRefundTx() {
     let refund_txb = new TransactionBuilder(this.network)
     refund_txb.setLockTime(this.me.refund_locktime)
-    refund_txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2sh_prevScriptOut,'hex'))
+    refund_txb.addInput(this.funding_txid,0,0xFFFFFFFE,Buffer.from(this.funding_p2wsh_prevScriptOut,'hex'))
     let change_outputs = []
     change_outputs.push({"addr":this.me.final_output_addr,"amount":this.me.fund_amount-DEFAULT_FEE/2})
     change_outputs.push({ "addr":this.other.final_output_addr,"amount":this.other.fund_amount-DEFAULT_FEE/2})
@@ -288,7 +304,7 @@ export class DLC_Proposal {
         __D: funding_key.privateKey,
         sign: funding_key.sign
       },
-      witnessScript: this.funding_p2sh.redeem.output,
+      witnessScript: this.funding_p2wsh.redeem.output,
       witnessValue: this.me.fund_amount + this.other.fund_amount
     }
     this.refund_txb.sign(txb_sign_arg,funding_key)
@@ -377,8 +393,10 @@ export class DLC_Proposal {
       refund_tx.ins[0].witness[2] = signatures.refund_tx_sig
     }
     this.refund_tx = refund_tx
+    this.complete = true
     console.log("Successfully included Accept object signatures into all transactions.")
   }
+
   includeAcceptObjectSerialized(serialised_signatures: Buffer) {
     if (!(this.other_accept)) {
       var accept = new DLC_Accept()

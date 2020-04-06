@@ -1,3 +1,29 @@
+/**
+  Participant objects contains all data to initialise a DLC_Builder protocol run.
+  They can be passed back and forth between participants until agreement is reached.
+  And contain:
+    - cet_amounts: array of output amount for each case (in same
+      order as oracle keys for each case)
+    - atleast 3 keys:
+      - init_pub_keys[]: public keys to spend utxos to fund contract
+      - funding_pub_key: public key to unlock funds from funding tx
+      - sweep_pub_key: public key to unlock funds from CETs
+    - init_utxos[]: UTXOs to fund DLC contract
+    - change_addr: address for change output of funding tx inptus
+    - final_output_addr: address of final output (or refund)
+    - oracle information:
+      - oracle_messages: list of messages representing each outcome of
+        contract for oracle to sign
+      - oracle_event_id: Oracle-provided ID of event for which messages
+        can be the outcome of
+    - network: {bitcoin, testnet, regtest}
+    - DLC parameters:
+      - funding amount for each participant
+      - CLTV delay for CET output 0s
+      - Refund Locktime (block or unix time after which refund tx is valid)
+ */
+
+
 export interface Input {
   txid: string,
   vout: number,
@@ -7,14 +33,14 @@ export interface Input {
 
 export class Participant {
   public fund_amount: number
-  public cet_amounts: number[] // amounts returned to this participant in each case
-  public oracle_messages: string[] // messages to be signed by oracle
-  public oracle_event_id: number // event id
+  public cet_amounts: number[]
+  public oracle_messages: string[]
+  public oracle_event_id: number
   public funding_pub_key: Buffer
   public sweep_pub_key: Buffer
-  public init_utxos: Input[] // funding inputs
-  public change_amount: number // change from funding inputs amount
-  public change_addr: string // change address
+  public init_utxos: Input[]
+  public change_amount: number
+  public change_addr: string
   public final_output_addr: string
   public cltv_locktime: number
   public refund_locktime: number

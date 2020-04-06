@@ -1,42 +1,8 @@
 import { ECPair, payments, networks } from 'bitcoinjs-lib'
-import { DLC_Proposal } from './proposal'
-import { Participant } from './participant'
-import { btcToSat, satToBtc } from './util'
-import { Oracle } from './Oracle'
-
-/**
-  For DLC we require:
-    - from each Participant:
-        - cet_amounts: array of output amount for each case (in same
-          order as oracle keys for each case)
-        - atleast 3 keys:
-          - init_pub_keys[]: public keys to spend utxos to fund contract
-          - funding_pub_key: public key to unlock funds from funding tx
-          - sweep_pub_key: public key to unlock funds from CETs
-        - init_utxos[]: UTXOs to fund DLC contract
-        - change_addr: address for change output of funding tx inptus
-        - final_output_addr - also refund address
-    - oracle information:
-      - oracle_messages: list of messages representing each outcome of
-        contract for oracle to sign
-      - oracle_event_id: Oracle-provided ID of event for which messages
-        can be the outcome of
-    - network: {bitcoin, testnet, regtest}
-    - DLC parameters:
-      - funding amount for each participant
-      - CLTV delay
-      - Refund Locktime (block or unix time after which refund tx is valid)
- */
-
-/**
-   1. Alice (proposer) creates Proposal object containing terms of DLC and sends
-   to Bob
-   2. Bob updates proposal with his info, makes any changes and returns to
-   Alice.
-   3. Once Alice and bob are in agreement, one of them constructs and signs each
-   tx and sends to the other to do the same.
-   4. Send funding tx. The contract is now ready
- */
+import { DLC_Proposal } from './src/proposal'
+import { Participant } from './src/participant'
+import { btcToSat, satToBtc } from './src/util'
+import { Oracle } from './src/oracle'
 
  const network = networks.regtest
 
@@ -94,6 +60,7 @@ function setup() {
 function run() {
   let oracle = new Oracle
   oracle.newEvent()
+
   let alice_prop = new DLC_Proposal(network)
   alice_prop.me = alice
   alice_prop.other = bob
@@ -127,14 +94,15 @@ function run() {
   alice_prop.includeAcceptObject(bob_prop.buildAcceptObject())
 
   console.log("\nfunding_tx: "+bob_prop.funding_tx.toHex())
-  console.log("\nmy_cet1_tx: "+bob_prop.my_cets_tx[0].toHex())
-  console.log("\nmy_cet2_tx: "+bob_prop.my_cets_tx[1].toHex())
+  alice_prop.my_cets_tx.forEach((cet_tx, index) => {
+    console.log("\nmy_cet"+index+"_tx: "+cet_tx.toHex())
+  })
   console.log("\nrefund_tx: "+bob_prop.refund_tx.toHex())
 
-  let s = oracle.signMsg(0,"1")
+  let oracle_signed_msg = oracle.signMsg(0,"1")
   // BROADCAST FUNDING TX AND BOBS CET1 TX
   // bob spend cet1 output0
-  let spending_tx_bob = bob_prop.spendMyCETtxOutput0(0,s,bob_sweep)
+  let spending_tx_bob = bob_prop.spendMyCETtxOutput0(0,oracle_signed_msg,bob_sweep)
   console.log("\nbob spending tx: "+spending_tx_bob.toHex())
   // alice spend  CET 1 output0 after CLTV time passed
   let spending_tx_alice = alice_prop.spendOtherCETtxOutput0(0,alice_sweep)
