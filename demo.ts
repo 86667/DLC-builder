@@ -47,8 +47,8 @@ let bob = new Participant(
 )
 export { alice, bob, alice_init, alice_funding, network }
 
-// setup()
-// run()
+setup()
+run()
 
 function setup() {
   console.log("alice address: "+alice_change_p2wpkh.address)
@@ -100,11 +100,11 @@ function run() {
   console.log("\nrefund_tx: "+bob_prop.refund_tx.toHex())
 
   let oracle_signed_msg = oracle.signMsg(0,"1")
-  // BROADCAST FUNDING TX AND BOBS CET1 TX
-  // bob spend cet1 output0
+  // BROADCAST FUNDING TX AND BOBS CET 0 TX
+  // bob spend cet 0 output0
   let spending_tx_bob = bob_prop.spendMyCETtxOutput0(0,oracle_signed_msg,bob_sweep)
   console.log("\nbob spending tx: "+spending_tx_bob.toHex())
-  // alice spend  CET 1 output0 after CLTV time passed
+  // alice spend  CET 0 output0 after CLTV time passed
   let spending_tx_alice = alice_prop.spendOtherCETtxOutput0(0,alice_sweep)
   console.log("\nalice spending tx: "+spending_tx_alice.toHex())
 }

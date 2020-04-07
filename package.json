@@ -18,11 +18,11 @@
     "bip32-utils": "git://github.com/bitcoinjs/bip32-utils.git",
     "bip39": "^3.0.2",
     "bip65": "^1.0.3",
-    "bitcoinjs-lib": "file:../bitcoinjs-lib/",
+    "bitcoinjs-lib": "file:./lib/bitcoinjs-lib",
     "ecurve": "^1.0.6",
     "js-sha256": "^0.9.0",
     "mocha": "^7.1.0",
     "ts-mocha": "^6.0.0",
     "typescript": "^3.8.3"
-  },
+  }
 }
